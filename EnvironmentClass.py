@@ -512,6 +512,7 @@ class AerialBattle(MultiAgentEnv):
         self.agent_report = env_config["agent_report_name"]
         self.episode_rewards = {}     # Dict to accumulate rewards per agent
         self.episode_steps = 0
+        self.prev_dist_centroid = 0
 
         # === Aircraft/Agent Initialization ===
         self.possible_agents = []     # List of all agent names
@@ -1403,7 +1404,6 @@ class AerialBattle(MultiAgentEnv):
         #we want to push the model into making delta actions small enough that the PID can follow them:
         # PID takes at worst 250 physics steps to reach target from -1 to 1. => 250/120 = 2 seconds = 20 action_steps
         # thus we want a step of max 2/20 = 0.1
-
         d_1, d_2, d_3, _= abs(actions[-1] - actions[-2])
         d_surfaces = ((d_1+d_2+d_3)/3)
         a_CE = 30
@@ -1418,8 +1418,9 @@ class AerialBattle(MultiAgentEnv):
                                       Versions[self.reward_version]['AL'])
 
         center_dist = aircraft.get_distance_from_centroid(self.bases)
-        reward_Flight['InBounds'] = -(min(center_dist / (self.max_size/2), 1.0) * 
-                                      Versions[self.reward_version]['IB'])
+        diff = (self.prev_dist_centroid-center_dist) / abs(self.prev_dist_centroid-center_dist) # +1 or -1
+        self.prev_dist_centroid = center_dist
+        reward_Flight['InBounds'] = diff * Versions[self.reward_version]['IB']
 
         a_S = 30
         mid_S = 0.2
