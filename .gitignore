@@ -1,0 +1,9 @@
+# Ignore data and test folders
+ENV_TEST/
+Physics Test/
+RELEVANT TELEMETRY/
+REWARD_TEST/
+Training_Runs/
+PID_TEST/
+.vscode/
+*.pyc

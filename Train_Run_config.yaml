@@ -1,0 +1,102 @@
+{ 'alg_config':
+  {
+    'batch_size_per_learner': [300, 400, 500],
+    'lr': [[0, 0.001], [1000000, 0.0005], [2000000, 0.0001]],
+    'gamma': [0.95, 0.99, 0.995, 0.999, 0.9995],
+    'train_iterations': 10000,
+    'checkpoint_freq': 2000,
+    'checkpoint_length': 3000, #3000/10 = 300/60 = 5 minutes
+},
+  'env_config' :
+    {
+      'rho' : 1.239,
+      'g' : 9.81,
+      'physics_frequency':120,
+      'action_frequency':10,
+      'max_episode_length': 6000, #6000/10 = 600/60 = 10 minutes
+      'team_number': 2,
+      'agent_number_team': 5,
+      'agent_report_name': 'none',
+      'missile_speed':600,
+      'missile_max_acceleration': 10,
+      'stepwise_tone_increment':0.01,
+      'min_bases_distance': 8000,
+      'env_size':[15000, 15000, 10000],
+      'max_size': 20000,
+      'attack_vulnerability_cone': [60, 300, 5000],
+      'base_vulnerability_distance': 1500,
+      'collision_distance': 30,
+      'dummy': 'curve', # 'line', 'curve', 'none'
+      'dummy_turn_radius':3000,
+      'dummy_direction':1,
+      'alive_agents_start': 1,
+      'speed_step': 0.05,
+      'UpAngle_step': 0.01,
+      'SideAngle_step': 0.01,
+      'screen_size' : [800, 800],
+      'spawning_distance': 3000,
+      'spawning_orientations': [[0], [0, 90, -90]] 
+    },
+
+  'uav_config' :
+    {
+       'mass': 5000,
+       'max_speed':343, #speed of sound (after this the aero model is not realistic anymore)
+       'max_acc': 20,
+       'bounding_box': [9413, 8017, 1446],
+       'inertia_tensor':
+         [ [6.817e3, 0, 0 ],
+           [0, 3.551e4, 0],
+           [0, 0, 4.151e4]],
+         #[[6.817e3,1.924e-1, 1.671e2],
+         # [1.924e-1,3,551e4,4.791e2],
+         # [1.671e2,-2.288e-3,4.151e4]],
+
+       'airframe':
+         {
+           'coefficients':
+             {
+               'front' : {
+                           'lift': [-0.0000033911279, -0.0000178357992, 0.0128228674137, 0.031668845813],
+                           'drag': [0.0001452967676, 0.0000783996205, 0.01],
+               },
+               'side': {
+                         'lateral':[-0.0000003732703, 0, 0.001555689069, 0],
+                         'drag':[0.0000164511278, 0, 0.0208105263158],
+               },
+             },
+           'COF' : [-0.3, 0, 0],
+           'surface': 88.58,
+       },
+
+       'aleiron':
+         {
+           'coefficients': {
+             'lift': [ 0.0000000065, 0.000004168, -0.0000262498, -0.0165697988, 0.1657873007 ],
+             'drag': [ 0.0000001361, 0.000056624, -0.0004479701, 0.01 ],
+           },
+           'COF': [ -2, 3, 0 ],
+           'surface': 2,
+         },
+
+       'elevons': {
+         'coefficients': {
+           'lift': [-0.0000021006, 0.0000014209, 0.0170200042, -0.0043365995],
+           'drag': [0.0002803707, 0.0002215203, 0.01],
+         },
+         'COF': [-3.65,0,0],
+         'surface':  10,
+       },
+
+       'rudders': {
+         'coefficients': {
+           'lateral': [-0.0000026576, 0, 0.021438325, 0],
+           'drag': [-0.0001966466, 0, 0.01],
+         },
+         'COF': [ -3, 0, 0 ],
+         'surface': 10,
+       },
+
+       'max_thrust': 80000,
+  }
+}
