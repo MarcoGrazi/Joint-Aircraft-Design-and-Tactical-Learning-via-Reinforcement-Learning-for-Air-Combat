@@ -512,7 +512,7 @@ class AerialBattle(MultiAgentEnv):
         self.agent_report = env_config["agent_report_name"]
         self.episode_rewards = {}     # Dict to accumulate rewards per agent
         self.episode_steps = 0
-        self.prev_dist_centroid = 0
+        self.steps_in_lane = 0
 
         # === Aircraft/Agent Initialization ===
         self.possible_agents = []     # List of all agent names
@@ -670,6 +670,7 @@ class AerialBattle(MultiAgentEnv):
         :return: (obs_dict, info_dict)
         """
         self.episode_steps = 0
+        self.steps_in_lane = 0
 
         # === Place team bases ===
         # Ensure bases are separated by min_bases_distance
@@ -719,7 +720,7 @@ class AerialBattle(MultiAgentEnv):
             aircraft.set_dummy(self.dummy, self.turn_radius, self.direction)
 
         # === Return initial observation and info ===
-        return self.get_obs(), {}
+        return self.get_obs(), {'__common__': {'lane_time':self.steps_in_lane}}
 
     def get_agent_ids(self):
         """
@@ -1356,7 +1357,7 @@ class AerialBattle(MultiAgentEnv):
             1: {
                 'CE': 0.1,
                 'AL': 0.3,
-                'IB': 0.2,
+                'L': 0.2,
                 'CS': 0.3,
                 'SF': 0.1,
 
@@ -1371,7 +1372,7 @@ class AerialBattle(MultiAgentEnv):
             2: {
                 'CE': 0.1,
                 'AL': 0.4,
-                'IB': 0.1,
+                'L': 0.1,
                 'CS': 0.25,
                 'SF': 0.15,
 
@@ -1386,7 +1387,7 @@ class AerialBattle(MultiAgentEnv):
             3: {
                 'CE': 0.1,
                 'AL': 0.3,
-                'IB': 0.1,
+                'L': 0.1,
                 'CS': 0.3,
                 'SF': 0.2,
 
@@ -1418,15 +1419,17 @@ class AerialBattle(MultiAgentEnv):
                                       Versions[self.reward_version]['AL'])
 
         center_dist = aircraft.get_distance_from_centroid(self.bases)
-        diff = (self.prev_dist_centroid-center_dist) / abs(self.prev_dist_centroid-center_dist) # +1 or -1
-        self.prev_dist_centroid = center_dist
-        reward_Flight['InBounds'] = diff * Versions[self.reward_version]['IB']
+        abs_loiter = abs(2000-center_dist) / self.env_size[0]
+        reward_Flight['Loiter'] = abs_loiter * Versions[self.reward_version]['L']
 
         a_S = 30
         mid_S = 0.2
         abs_speed = abs(200-vel[0]) / 343
         reward_Flight['Cruise Speed'] = -((1/(1 + np.exp(-a_S * (abs_speed - mid_S)))) * 
                                           Versions[self.reward_version]['CS'])
+        
+        if abs_alt < 500 and abs_loiter<500 and abs_speed<50:
+            self.steps_in_lane = self.steps_in_lane + 1
 
         a_SF = 30
         mid_SF = 0.2
@@ -1661,7 +1664,7 @@ class AerialBattle(MultiAgentEnv):
         # === Optional: Add team-based rewards here ===
         # (e.g., base destruction, shared victories, assists, etc.)
 
-        return self.get_obs(), rewards, terminated, truncated, {}
+        return self.get_obs(), rewards, terminated, truncated, {'__common__': {'lane_time':self.steps_in_lane}}
 
 
         """
