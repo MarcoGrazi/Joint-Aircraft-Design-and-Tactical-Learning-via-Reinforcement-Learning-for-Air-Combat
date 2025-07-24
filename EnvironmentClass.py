@@ -1426,8 +1426,9 @@ class AerialBattle(MultiAgentEnv):
         reward_Flight['Cruise Speed'] = -((1/(1 + np.exp(-a_S * (abs_speed - mid_S)))) * 
                                           Versions[self.reward_version]['CS'])
         
-        if abs(self.env_size[2]/2 - altitude) < 500 and abs(5000-center_dist)<500:
+        if abs(self.env_size[2]/2 - altitude) < 1000 and abs(5000-center_dist)< 1000:
             self.steps_in_lane = self.steps_in_lane + 1
+            print(self.steps_in_lane)
             reward_Flight['Loiter'] += 1
 
         a_SF = 30
@@ -2270,5 +2271,5 @@ def Test_env():
     # Clean up environment (if needed)
     env.close()
 
-#Test_env()
+Test_env()
 
