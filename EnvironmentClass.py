@@ -183,7 +183,7 @@ class Aircraft:
         """
 
         # === 1. Convert normalized input angles to radians ===
-        max_angle_rad = np.deg2rad(30)  # maximum angular offset allowed by agent
+        max_angle_rad = np.deg2rad(45)  # maximum angular offset allowed by agent
         v_up   = action[0] * max_angle_rad    # vertical offset from forward
         v_side = action[1] * max_angle_rad    # lateral offset from forward
         v_speed = action[2]                  # speed stays normalized for now
@@ -223,7 +223,6 @@ class Aircraft:
         AoA_norm = AoA_rad / (np.pi/6)          # range: [-1, 1] corresponds to ±30°
         sideslip_norm = sideslip_rad / threshold_rad  # range: ±5°
         roll_norm = roll_rad / np.pi        # range: [-1, 1] corresponds to ±180°
-
         return [AoA_norm, sideslip_norm, roll_norm, v_speed]
 
     def PID_Control(self, action):
@@ -638,7 +637,6 @@ class AerialBattle(MultiAgentEnv):
         # === Add randomness to orientation if in training mode ===
         if not testing:
             discrete_pitch, discrete_yaw = self.spawning_orientations
-
             # Random roll ∈ [-10°, +10°]
             rand_orient[0] = np.deg2rad(np.random.uniform(-10, 10))  # roll
 
@@ -1356,8 +1354,8 @@ class AerialBattle(MultiAgentEnv):
             # 1: balanced
             1: {
                 'CE': 0.1,
-                'AL': 0.3,
-                'L': 0.2,
+                'AL': 0.2,
+                'L': 0.3,
                 'CS': 0.3,
                 'SF': 0.1,
 
@@ -1370,11 +1368,11 @@ class AerialBattle(MultiAgentEnv):
             },
             # 2: altitude focus
             2: {
-                'CE': 0.1,
-                'AL': 0.4,
-                'L': 0.1,
-                'CS': 0.25,
-                'SF': 0.15,
+                'CE': 0.05,
+                'AL': 0.3,
+                'L': 0.4,
+                'CS': 0.2,
+                'SF': 0.05,
 
                 'P': 0.0,
                 'CR': 0.0,
@@ -1385,11 +1383,11 @@ class AerialBattle(MultiAgentEnv):
             },
             # 3: Trajectory Focus
             3: {
-                'CE': 0.1,
+                'CE': 0.05,
                 'AL': 0.3,
-                'L': 0.1,
+                'L': 0.3,
                 'CS': 0.3,
-                'SF': 0.2,
+                'SF': 0.05,
 
                 'P': 0.0,
                 'CR': 0.0,
@@ -1419,8 +1417,8 @@ class AerialBattle(MultiAgentEnv):
                                       Versions[self.reward_version]['AL'])
 
         center_dist = aircraft.get_distance_from_centroid(self.bases)
-        abs_loiter = abs(2000-center_dist) / self.env_size[0]
-        reward_Flight['Loiter'] = 0.05-abs_loiter * Versions[self.reward_version]['L']
+        abs_loiter = abs(5000-center_dist) / self.env_size[0]
+        reward_Flight['Loiter'] = -abs_loiter * Versions[self.reward_version]['L']
 
         a_S = 30
         mid_S = 0.2
@@ -1428,8 +1426,9 @@ class AerialBattle(MultiAgentEnv):
         reward_Flight['Cruise Speed'] = -((1/(1 + np.exp(-a_S * (abs_speed - mid_S)))) * 
                                           Versions[self.reward_version]['CS'])
         
-        if abs(self.env_size[2]/2 - altitude) < 500 and abs(2000-center_dist)<500:
+        if abs(self.env_size[2]/2 - altitude) < 500 and abs(5000-center_dist)<500:
             self.steps_in_lane = self.steps_in_lane + 1
+            reward_Flight['Loiter'] += 1
 
         a_SF = 30
         mid_SF = 0.2
@@ -1438,9 +1437,9 @@ class AerialBattle(MultiAgentEnv):
         reward_Flight['Stable Flight'] = -((1/(1 + np.exp(-a_SF * (abs_attitude - mid_SF)))) * 
                                            Versions[self.reward_version]['SF'])
 
-        Total_Reward['Stall Speed'] = -((vel[0]<100) * 8)
+        Total_Reward['Stall Speed'] = -((vel[0]<100) * 5)
         
-        normalized_reward_Flight = sum(reward_Flight.values()) + 0.3
+        normalized_reward_Flight = sum(reward_Flight.values())
 
 
         #### Pursuit related Rewards ####
@@ -2209,7 +2208,7 @@ def Test_env():
     """
 
     # Load test configuration from YAML file
-    with open("Training_Runs/Test/Test_config.yaml") as f:
+    with open("Train_Run_config.yaml") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
     # Create the AerialCombat environment
@@ -2226,18 +2225,18 @@ def Test_env():
     # Format: [Up_Angle, Side_Angle, Speed, Fire], all normalized in body frame
     predefined_actions = [
         [0, 0, 1, 0],
-        [0, 0.5, 1, 0],
         [0, 0, 1, 0],
-        [0, -0.5, 1, 0],
+        [0, 0, 1, 0],
+        [0, 0, 1, 0],
         [0, 0, 1, 0]
     ]
 
     a = 0  # Action index pointer
 
     # Run simulation for 20 steps per predefined action set
-    for step in range(len(predefined_actions) * 20):
+    for step in range(len(predefined_actions) * 50):
         # Update the action index every 50 steps
-        if step % 20 == 0 and step != 0:
+        if step % 50 == 0 and step != 0:
             a += 1
 
         # Build action dictionary for alive agents
@@ -2271,5 +2270,5 @@ def Test_env():
     # Clean up environment (if needed)
     env.close()
 
-#Test_env()
+Test_env()
 
