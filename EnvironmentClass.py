@@ -1356,8 +1356,8 @@ class AerialBattle(MultiAgentEnv):
                 'CE': 0.1,
                 'AL': 0.2,
                 'L': 0.3,
-                'CS': 0.3,
-                'SF': 0.1,
+                'CS': 0.2,
+                'SF': 0.2,
 
                 'P': 0.0,
                 'CR': 0.0,
@@ -1368,11 +1368,11 @@ class AerialBattle(MultiAgentEnv):
             },
             # 2: altitude focus
             2: {
-                'CE': 0.05,
-                'AL': 0.3,
-                'L': 0.4,
+                'CE': 0.1,
+                'AL': 0.4,
+                'L': 0.2,
                 'CS': 0.2,
-                'SF': 0.05,
+                'SF': 0.1,
 
                 'P': 0.0,
                 'CR': 0.0,
@@ -1383,11 +1383,11 @@ class AerialBattle(MultiAgentEnv):
             },
             # 3: Trajectory Focus
             3: {
-                'CE': 0.05,
-                'AL': 0.3,
-                'L': 0.3,
-                'CS': 0.3,
-                'SF': 0.05,
+                'CE': 1,
+                'AL': 0.2,
+                'L': 0.2,
+                'CS': 0.4,
+                'SF': 0.1,
 
                 'P': 0.0,
                 'CR': 0.0,
@@ -1417,7 +1417,7 @@ class AerialBattle(MultiAgentEnv):
                                       Versions[self.reward_version]['AL'])
 
         center_dist = aircraft.get_distance_from_centroid(self.bases)
-        abs_loiter = abs(5000-center_dist) / self.env_size[0]
+        abs_loiter = np.clip(abs(5000-center_dist) / 5000, 0, 1)
         reward_Flight['Loiter'] = -abs_loiter * Versions[self.reward_version]['L']
 
         a_S = 30
@@ -1428,12 +1428,12 @@ class AerialBattle(MultiAgentEnv):
         
         if abs(self.env_size[2]/2 - altitude) < 800 and abs(5000-center_dist)< 800:
             self.steps_in_lane = self.steps_in_lane + 1
-            reward_Flight['Loiter'] += 1
+            reward_Flight['Loiter'] += 0.5
 
         a_SF = 30
         mid_SF = 0.2
         roll, pitch, _ = telemetry['orientation'][-1]  # radians
-        abs_attitude = (max(abs(roll)-np.pi/6, 0) + max(abs(pitch)-np.pi/12, 0)) / (2*np.pi)
+        abs_attitude = max(abs(pitch)-np.pi/12, 0) / np.pi
         reward_Flight['Stable Flight'] = -((1/(1 + np.exp(-a_SF * (abs_attitude - mid_SF)))) * 
                                            Versions[self.reward_version]['SF'])
 
