@@ -119,8 +119,8 @@ class CustomWandbCallback(DefaultCallbacks):
         metrics["reward_max"] = env_metrics.get("episode_reward_max")
         metrics["reward_min"] = env_metrics.get("episode_reward_min")
         metrics["episode_len_mean"] = env_metrics.get("episode_len_mean")
-        metrics["lane_time_mean"] = result["custom_metrics"].get("lane_time_mean", 0)
-        metrics["lane_time_max"] = result["custom_metrics"].get("lane_time_max", 0)
+        metrics["lane_time_mean"] = env_metrics["custom_metrics"].get("lane_time_mean", 0)
+        metrics["lane_time_max"] = env_metrics["custom_metrics"].get("lane_time_max", 0)
 
         learner_stats = result.get("info", {}).get("learner", {}).get("team_0", {}).get("learner_stats", {})
         for key in ["entropy", "kl", "cur_lr", "total_loss", "policy_loss", "vf_loss"]:
