@@ -1,8 +1,8 @@
 { 'alg_config':
   {
-    'batch_size_per_learner': [300, 400, 500],
+    'batch_size_per_learner': [500],
     'lr': [[0, 0.001], [1000000, 0.0005], [2500000, 0.0001]],
-    'gamma': [0.95, 0.99, 0.995, 0.999, 0.9995],
+    'gamma': [0.999],
     'train_iterations': 10000,
     'checkpoint_freq': 2000,
     'checkpoint_length': 3000, #3000/10 = 300/60 = 5 minutes

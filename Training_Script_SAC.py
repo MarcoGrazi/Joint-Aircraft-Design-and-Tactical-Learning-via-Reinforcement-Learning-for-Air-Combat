@@ -20,12 +20,10 @@ from ray.tune.registry import register_env
 
 # === Configuration Paths ===
 Folder = 'Training_Runs'
-RunName = 'Train_1_GOODFLIGHT_1'
-RunDescription = 'Training the agent to learn basic flying skills.\n' \
-'In this Train-1 we explore many discount factor (0.95, 0.99, 0.995, 0.999, 0.9995),\n ' \
-'train batch size (300, 400, 500) and reward weight versions (1, 2, 3) combinations\n' \
-'to establish the best suited for this task. next: train 2 will explore a narrower space\n' \
-'of combinations and actually produce the final good-flight-policy to be used in later experiments'
+RunName = 'Train_1_GOODFLIGHT_2'
+RunDescription = 'Explore different entropy schedules for fixed gamma=0.999,\n' \
+                'train_batch_size=500. explore slight variations on best reward version from previous step.\n' \
+                'Added a control effort component to discourage excessive manouvres if not necessary'
 
 ConfigFile = 'Train_Run_config.yaml'
 Base_Checkpoint = ''
@@ -218,11 +216,14 @@ def policy_mapping_fn(agent_id, episode=0, **kwargs):
 algo_config = (
     SACConfig()
     .api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False)
-    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1, 2, 3])})
+    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1])})
     .training(
         train_batch_size=tune.grid_search(alg_config['batch_size_per_learner']),
         lr=alg_config['lr'],
         gamma=tune.grid_search(alg_config['gamma']),
+        entropy_coeff_schedule=tune.grid_search([[[0, 0.1], [1e6, 0.01]], 
+                                                 [[0, 0.05], [1e6, 0.005]]], 
+                                                 [[0, 0.2], [1e6, 0.02]]),
         grad_clip=50,
         replay_buffer_config={
             'type': 'MultiAgentPrioritizedReplayBuffer',

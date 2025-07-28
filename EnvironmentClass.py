@@ -1351,43 +1351,68 @@ class AerialBattle(MultiAgentEnv):
         actions = telemetry['commands']
 
         Versions = {
-            # 1: balanced
             1: {
                 'CE': 0.1,
-                'AL': 0.2,
-                'L': 0.3,
-                'CS': 0.2,
-                'SF': 0.2,
-
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
-
-                'GFW': 1.0,
-                'PW': 0.0
-            },
-            # 2: altitude focus
-            2: {
-                'CE': 0.1,
-                'AL': 0.4,
-                'L': 0.2,
-                'CS': 0.2,
-                'SF': 0.1,
-
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
-
-                'GFW': 1.0,
-                'PW': 0.0
-            },
-            # 3: Trajectory Focus
-            3: {
-                'CE': 1,
                 'AL': 0.2,
                 'L': 0.2,
                 'CS': 0.4,
                 'SF': 0.1,
+
+                'P': 0.0,
+                'CR': 0.0,
+                'G' : 0.0,
+
+                'GFW': 1.0,
+                'PW': 0.0
+            },
+            2: {
+                'CE': 0.1,
+                'AL': 0.2,
+                'L': 0.3,
+                'CS': 0.3,
+                'SF': 0.1,
+
+                'P': 0.0,
+                'CR': 0.0,
+                'G' : 0.0,
+
+                'GFW': 1.0,
+                'PW': 0.0
+            },
+            3: {
+                'CE': 0.1,
+                'AL': 0.3,
+                'L': 0.2,
+                'CS': 0.3,
+                'SF': 0.1,
+
+                'P': 0.0,
+                'CR': 0.0,
+                'G' : 0.0,
+
+                'GFW': 1.0,
+                'PW': 0.0
+            },
+            4: {
+                'CE': 0.05,
+                'AL': 0.2,
+                'L': 0.3,
+                'CS': 0.4,
+                'SF': 0.05,
+
+                'P': 0.0,
+                'CR': 0.0,
+                'G' : 0.0,
+
+                'GFW': 1.0,
+                'PW': 0.0
+            },
+            5: {
+                'CE': 0.05,
+                'AL': 0.3,
+                'L': 0.2,
+                'CS': 0.4,
+                'SF': 0.05,
 
                 'P': 0.0,
                 'CR': 0.0,
@@ -1426,9 +1451,12 @@ class AerialBattle(MultiAgentEnv):
         reward_Flight['Cruise Speed'] = -((1/(1 + np.exp(-a_S * (abs_speed - mid_S)))) * 
                                           Versions[self.reward_version]['CS'])
         
+        # sparse reward for each step spent inside loitering lane. Custom metric definition
         if abs(self.env_size[2]/2 - altitude) < 800 and abs(5000-center_dist)< 800:
             self.steps_in_lane = self.steps_in_lane + 1
             reward_Flight['Loiter'] += 0.5
+        else:
+            self.steps_in_lane = 0
 
         a_SF = 30
         mid_SF = 0.2
@@ -1438,6 +1466,10 @@ class AerialBattle(MultiAgentEnv):
                                            Versions[self.reward_version]['SF'])
 
         Total_Reward['Stall Speed'] = -((vel[0]<100) * 5)
+
+        # Sparse reward to discourage too aggressive manouvres 
+        if abs(action[0]) > 0.5 or abs(action[1]) > 0.5:
+            Total_Reward['Control Effort'] = -(max(abs(action[0])-0.5, 0) * max(abs(action[1])-0.5, 0)) * 0.1
         
         normalized_reward_Flight = sum(reward_Flight.values())
 
