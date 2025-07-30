@@ -1365,97 +1365,6 @@ class AerialBattle(MultiAgentEnv):
                 'GFW': 1.0,
                 'PW': 0.0
             },
-            2: {
-                'CE': 0.1,
-                'AL': 0.3,
-                'L': 0.3,
-                'CS': 0.3,
-
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
-
-                'GFW': 1.0,
-                'PW': 0.0
-            },
-            3: {
-                'CE': 0.1,
-                'AL': 0.2,
-                'L': 0.4,
-                'CS': 0.3,
-
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
-
-                'GFW': 1.0,
-                'PW': 0.0
-            },
-            4: {
-                'CE': 0.1,
-                'AL': 0.4,
-                'L': 0.3,
-                'CS': 0.3,
-
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
-
-                'GFW': 1.0,
-                'PW': 0.0
-            },
-            5: {
-                'CE': 0.2,
-                'AL': 0.4,
-                'L': 0.3,
-                'CS': 0.1,
-
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
-
-                'GFW': 1.0,
-                'PW': 0.0
-            },
-            6: {
-                'CE': 0.1,
-                'AL': 0.4,
-                'L': 0.4,
-                'CS': 0.1,
-
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
-
-                'GFW': 1.0,
-                'PW': 0.0
-            },
-            7: {
-                'CE': 0.1,
-                'AL': 0.2,
-                'L': 0.5,
-                'CS': 0.2,
-
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
-
-                'GFW': 1.0,
-                'PW': 0.0
-            },
-            8: {
-                'CE': 0.1,
-                'AL': 0.2,
-                'L': 0.3,
-                'CS': 0.4,
-
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
-
-                'GFW': 1.0,
-                'PW': 0.0
-            },
         }
 
         #### Flight Related Rewards ####
@@ -1486,13 +1395,11 @@ class AerialBattle(MultiAgentEnv):
                                           Versions[self.reward_version]['L'])
 
         # sparse reward for each step spent inside loitering lane. Custom metric definition
-        if abs(self.env_size[2]/2 - altitude) < 800 and abs(3000-center_dist) < 500:
+        if abs(self.env_size[2]/2 - altitude) < 500 and abs(3000-center_dist) < 500:
             self.steps_in_lane = self.steps_in_lane + 1
-            reward_Flight['Loiter'] = 10
+            reward_Flight['Loiter'] = 5
         else:
             self.steps_in_lane = 0
-
-        Total_Reward['Stall Speed'] = -((vel[0]<100) * 10)
         
         normalized_reward_Flight = sum(reward_Flight.values())
 
@@ -1568,7 +1475,7 @@ class AerialBattle(MultiAgentEnv):
         #check collision or over-g
         if (self.check_collision(agent_index) 
             or acc >= (20*9.81) 
-            or vel[0]<0 
+            or vel[0]<100 
             or altitude>self.env_size[2]
             or aircraft.get_distance_from_centroid(self.bases) > self.max_size):
             self.Aircrafts[agent_index].kill()

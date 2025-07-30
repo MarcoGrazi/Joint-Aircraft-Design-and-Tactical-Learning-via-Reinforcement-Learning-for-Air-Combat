@@ -20,10 +20,9 @@ from ray.tune.registry import register_env
 
 # === Configuration Paths ===
 Folder = 'Training_Runs'
-RunName = 'Train_1_GOODFLIGHT_2'
-RunDescription = 'Explore different entropy parameters for fixed gamma=0.999,\n' \
-                'train_batch_size=500. explore slight variations on best reward version from previous step.\n' \
-                'Added a control effort component to discourage excessive manouvres if not necessary'
+RunName = 'Algorithm_Tuning'
+RunDescription = 'Explore different algorithm parameters for fixed gamma=0.999,\n' \
+                'train_batch_size=500. The objective is to achieve convergence'
 
 ConfigFile = 'Train_Run_config.yaml'
 Base_Checkpoint = ''
@@ -214,23 +213,19 @@ def policy_mapping_fn(agent_id, episode=0, **kwargs):
 algo_config = (
     SACConfig()
     .api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False)
-    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1,2,3,4,5,6,7,8])})
+    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1])})
     .training(
         train_batch_size=tune.grid_search(alg_config['batch_size_per_learner']),
         gamma=tune.grid_search(alg_config['gamma']),
 
         twin_q=True,
-        #initial_alpha=2,
-        #n_step=3,
-        actor_lr=alg_config['lr'],
-        critic_lr = 0.0001,
-        alpha_lr = 0.0001,
+        actor_lr=tune.grid_search([0.0001, 0.00001, 0.000001]),
+        critic_lr = tune.grid_search([0.001, 0.0001, 0.00001]),
+        initial_alpha = tune.grid_search([1, 0.5, 0.2]),
         grad_clip=50,
         replay_buffer_config={
-            'type': 'MultiAgentPrioritizedReplayBuffer',
-            'prioritized_replay_alpha': 0.6,
-            'prioritized_replay_beta': 0.4,
-            'prioritized_replay_eps': 1e-6,
+            'type': 'MultiAgentReplayBuffer',
+            'capacity': tune.grid_search([10000, 100000])
         }
     )
     .env_runners(
