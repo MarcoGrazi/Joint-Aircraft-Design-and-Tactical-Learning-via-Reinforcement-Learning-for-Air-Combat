@@ -4,7 +4,7 @@
     'lr': [[0, 0.0005], [1000000, 0.0001], [2500000, 0.00005]],
     'gamma': [0.999],
     'train_iterations': 2000,
-    'checkpoint_freq': 2000,
+    'checkpoint_freq': 4000,
     'checkpoint_length': 3000, #3000/10 = 300/60 = 5 minutes
 },
   'env_config' :

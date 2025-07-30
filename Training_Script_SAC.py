@@ -21,8 +21,9 @@ from ray.tune.registry import register_env
 # === Configuration Paths ===
 Folder = 'Training_Runs'
 RunName = 'Algorithm_Tuning'
-RunDescription = 'Explore different algorithm parameters for fixed gamma=0.999,\n' \
-                'train_batch_size=500. The objective is to achieve convergence'
+RunDescription = 'Explore different algorithm parameters for fixed gamma=0.999, train_batch_size=500.\n' \
+                 '-first search is among values for critic_lr, actor_lr and replay buffer capacity \n' \
+                 '-second search will focus on initial_alpha, alpha_lr, n_step, tau'
 
 ConfigFile = 'Train_Run_config.yaml'
 Base_Checkpoint = ''
@@ -219,13 +220,12 @@ algo_config = (
         gamma=tune.grid_search(alg_config['gamma']),
 
         twin_q=True,
-        actor_lr=tune.grid_search([0.0001, 0.00001, 0.000001]),
-        critic_lr = tune.grid_search([0.001, 0.0001, 0.00001]),
-        initial_alpha = tune.grid_search([1, 0.5, 0.2]),
+        actor_lr=tune.grid_search([0.0005, 0.0001, 0.00005]),
+        critic_lr = tune.grid_search([0.001, 0.0005, 0.0001]),
         grad_clip=50,
         replay_buffer_config={
             'type': 'MultiAgentReplayBuffer',
-            'capacity': tune.grid_search([10000, 100000])
+            'capacity': tune.grid_search([50000, 100000, 500000])
         }
     )
     .env_runners(
