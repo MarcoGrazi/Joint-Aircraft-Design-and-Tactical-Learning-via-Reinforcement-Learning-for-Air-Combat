@@ -195,10 +195,10 @@ dummy_env.close()
 # === Define Multi-Agent Policy Specs ===
 policies = {
     "team_0": (None, obs_space, act_space, {
-        "model": {"fcnet_hiddens": [512, 512], "fcnet_activation": 'tanh'},
+        "model": {"fcnet_hiddens": [512, 512], "fcnet_activation": 'relu'},
     }),
     "team_1": (None, obs_space, act_space, {
-        "model": {"fcnet_hiddens": [512, 512], "fcnet_activation": 'tanh'},
+        "model": {"fcnet_hiddens": [512, 512], "fcnet_activation": 'relu'},
     }),
 }
 
