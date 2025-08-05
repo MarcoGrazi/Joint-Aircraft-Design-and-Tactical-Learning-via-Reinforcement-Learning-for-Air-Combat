@@ -20,10 +20,8 @@ from ray.tune.registry import register_env
 
 # === Configuration Paths ===
 Folder = 'Training_Runs'
-RunName = 'Train2_Loitering'
-RunDescription = "Updated Algorithm after Algorithm_Tuning Phase, attempt 2 to loitering.\n" \
-                 "test of different configurations of the reward function and slight variations" \
-                 "of gamma and train_batch_size" 
+RunName = 'Train3_Pursuit_1'
+RunDescription = "Pursuit training run 1 against line dummy" 
 
 ConfigFile = 'Train_Run_config.yaml'
 Base_Checkpoint = ''

@@ -33,8 +33,8 @@
       'UpAngle_step': 0.001,
       'SideAngle_step': 0.001,
       'screen_size' : [800, 800],
-      'spawning_distance': 6000,
-      'spawning_orientations': [[0], [45, -45]] 
+      'spawning_distance': 2500,
+      'spawning_orientations': [[0, 10, -10], [0, 90, 180, -90]] 
     },
 
   'uav_config' :

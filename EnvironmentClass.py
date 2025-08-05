@@ -1346,14 +1346,14 @@ class AerialBattle(MultiAgentEnv):
         Versions = {
             1: {
                 'AL': 0.4,
-                'L': 0.4,
-                'CS': 0.2,
+                'L': 0.1,
+                'CS': 0.4,
 
-                'P': 0,
-                'CR': 0,
+                'P': 0.4,
+                'CR': 0.6,
 
-                'GFW': 1,
-                'PW': 0
+                'GFW': 0.2,
+                'PW': 0.8
             },
         }
 
@@ -1387,13 +1387,6 @@ class AerialBattle(MultiAgentEnv):
         reward_Flight['Loiter'] += ((abs(4000-center_dist) < 1500) *
                                     (1500/np.clip(abs(4000-center_dist), 150, 1500)) 
                                     * Versions[self.reward_version]['L'])
-
-        # sparse reward for each step spent inside loitering lane. Custom metric definition
-        if abs(self.env_size[2]/2 - altitude) < 1500 and abs(4000-center_dist) < 1500:
-            self.steps_in_lane = self.steps_in_lane + 1
-            reward_Flight['InLane'] = 3
-        else:
-            self.steps_in_lane = 0
         
         normalized_reward_Flight = sum(reward_Flight.values())
 
@@ -1437,15 +1430,16 @@ class AerialBattle(MultiAgentEnv):
             reward_Pursuit['Closure'] = 0
         
         #Sparse Pursuit Rewards:
-        #if missile_target != 'base':
-         #   Total_Reward['Attack'] = missile_tone_attack * 4
-        #else:
-         #   Total_Reward['Attack'] = 0  #TODO: change in subsequent trainings to destroy the base
-        #Total_Reward['Defence'] = -missile_tone_defence * 5
+        if missile_target != 'base':
+            Total_Reward['Attack'] = missile_tone_attack * 4
+        else:
+            Total_Reward['Attack'] = 0  #TODO: change in subsequent trainings to destroy the base
+        Total_Reward['Defence'] = -missile_tone_defence * 5
+
+        if kill:
+            Total_Reward['Kill'] = 100
 
         normalized_reward_Pursuit = sum(reward_Pursuit.values())
-
-        #TODO: Kill reward
 
 
         #### Reward Merge ####
