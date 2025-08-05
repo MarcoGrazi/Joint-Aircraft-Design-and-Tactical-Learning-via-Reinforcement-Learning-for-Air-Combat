@@ -572,6 +572,11 @@ class AerialBattle(MultiAgentEnv):
         :return: gym.spaces.Box representing the agent's action space
         """
         return self.action_spaces[team_id]
+    
+    def point_on_circumference(self, x0, y0, r, theta):
+        x = x0 + r * np.cos(theta)
+        y = y0 + r * np.sin(theta)
+        return (x, y)
 
     def init_airplane(self, aircraft, alive, testing):
         """
@@ -595,27 +600,22 @@ class AerialBattle(MultiAgentEnv):
                 max_spawn_distance = self.spawning_distance
 
                 # Random XY position around the base, clipped to stay inside map bounds
-                x = np.clip(np.random.uniform(centroid[0] - max_spawn_distance,
-                                            centroid[0] + max_spawn_distance),
-                            100, self.env_size[0] - 100)
-                y = np.clip(np.random.uniform(centroid[1] - max_spawn_distance,
-                                            centroid[1] + max_spawn_distance),
-                            100, self.env_size[1] - 100)
-
+                x, y = self.point_on_circumference(centroid[0], centroid[1],
+                                                    max_spawn_distance, np.random.uniform(0, 2*np.pi))
+                x = np.clip(x, 100, self.env_size[0]-100)
+                y = np.clip(y, 100, self.env_size[0]-100)
                 z = -self.env_size[2] / 2  # Midpoint in altitude (Z+ down) # Spawn within combat area
 
             else:
                 # Testing mode — predictable altitude, closer to mid-range
                 max_spawn_distance = self.spawning_distance
 
-                x = np.clip(np.random.uniform(centroid[0] - max_spawn_distance,
-                                            centroid[0] + max_spawn_distance),
-                            100, self.env_size[0] - 100)
-                y = np.clip(np.random.uniform(centroid[1] - max_spawn_distance,
-                                            centroid[1] + max_spawn_distance),
-                            100, self.env_size[1] - 100)
-
-                z = -self.env_size[2] / 2  # Midpoint in altitude (Z+ down)
+                # Random XY position around the base, clipped to stay inside map bounds
+                x, y = self.point_on_circumference(centroid[0], centroid[1],
+                                                    max_spawn_distance, np.random.uniform(0, 2*np.pi))
+                x = np.clip(x, 100, self.env_size[0]-100)
+                y = np.clip(y, 100, self.env_size[0]-100)
+                z = -self.env_size[2] / 2  # Midpoint in altitude (Z+ down) # Spawn within combat area
 
             rand_pos = [x, y, z]
 
@@ -673,17 +673,11 @@ class AerialBattle(MultiAgentEnv):
         # Ensure bases are separated by min_bases_distance
         self.bases.clear()
         for team in range(self.num_teams):
-            base_pos = np.zeros(3)
-            while True:
-                base_pos = np.array([
-                    np.random.uniform(0, self.env_size[0]),
-                    np.random.uniform(0, self.env_size[1]),
-                    0  # Bases are on the ground (Z = 0)
-                ])
-                # Enforce distance from previously placed bases
-                if all(np.linalg.norm(base_pos - b) >= self.min_bases_distance for b in self.bases):
-                    self.bases.append(base_pos)
-                    break
+            delta = (2 * np.pi) / self.num_teams
+            x, y = self.point_on_circumference(self.env_size[0]/2, self.env_size[1]/2,
+                                                self.min_bases_distance, team*delta)
+            z = 0
+            self.bases.append(np.array([x, y, z]))
 
         # === Reset episode rewards ===
         for agent_id in self.possible_agents:
@@ -1352,39 +1346,14 @@ class AerialBattle(MultiAgentEnv):
         Versions = {
             1: {
                 'AL': 0.3,
-                'L': 0.4,
-                'CS': 0.3,
-
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
-
-                'GFW': 1.0,
-                'PW': 0.0
-            },
-            2: {
-                'AL': 0.3,
-                'L': 0.2,
-                'CS': 0.5,
-
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
-
-                'GFW': 1.0,
-                'PW': 0.0
-            },
-            3: {
-                'AL': 0.3,
                 'L': 0.3,
                 'CS': 0.4,
 
-                'P': 0.0,
-                'CR': 0.0,
-                'G' : 0.0,
+                'P': 0,
+                'CR': 0,
 
-                'GFW': 1.0,
-                'PW': 0.0
+                'GFW': 1,
+                'PW': 0
             },
         }
 
@@ -1394,27 +1363,34 @@ class AerialBattle(MultiAgentEnv):
         abs_alt = abs(self.env_size[2]/2 - altitude) / (self.env_size[2]/2)
         reward_Flight['Altitude'] = -((1/(1 + np.exp(-a_A * (abs_alt - mid_A)))) * 
                                       Versions[self.reward_version]['AL'])
+        reward_Flight['Altitude'] += ((abs(self.env_size[2]/2 - altitude) < 1200) *
+                                      (1200/np.clip(abs(self.env_size[2]/2 - altitude), 150, 1200)) 
+                                      * Versions[self.reward_version]['AL'])
         
-        a_S = 10
-        mid_S = 0.25
+        
+        a_S = 15
+        mid_S = 0.2
         abs_speed = abs(200-vel[0]) / 143
         reward_Flight['Cruise Speed'] = -((1/(1 + np.exp(-a_S * (abs_speed - mid_S)))) * 
                                           Versions[self.reward_version]['CS'])
+        reward_Flight['Cruise Speed'] = ((abs(200-vel[0]) < 50) *
+                                      (50/np.clip(abs(self.env_size[2]/2 - altitude), 5, 50)) 
+                                      * Versions[self.reward_version]['CS'])
         
 
         center_dist = aircraft.get_distance_from_centroid(self.bases)
         a_L = 8
         mid_L = 0.3
-        abs_loiter = np.clip(abs(3000-center_dist) / 8000, 0, 1)
+        abs_loiter = np.clip(abs(4500-center_dist) / 8000, 0, 1)
         reward_Flight['Loiter'] = -((1/(1 + np.exp(-a_L * (abs_loiter - mid_L)))) * 
                                           Versions[self.reward_version]['L'])
+        reward_Flight['Loiter'] += ((abs(4000-center_dist) < 1200) *
+                                    (1200/np.clip(abs(4000-center_dist), 150, 1200)) 
+                                    * Versions[self.reward_version]['L'])
 
         # sparse reward for each step spent inside loitering lane. Custom metric definition
-        if abs(self.env_size[2]/2 - altitude) < 1000 and abs(3000-center_dist) < 800 and abs(200-vel[0]) < 30:
+        if abs(self.env_size[2]/2 - altitude) < 1200 and abs(4000-center_dist) < 1200:
             self.steps_in_lane = self.steps_in_lane + 1
-            reward_Flight['Loiter'] += (800/np.clip(abs(3000-center_dist), 80, 800)) * Versions[self.reward_version]['L']
-            reward_Flight['Altitude'] += (1000/np.clip(abs(self.env_size[2]/2 - altitude), 100, 1000)) * Versions[self.reward_version]['AL']
-            reward_Flight['Cruise Speed'] += (30/np.clip(abs(200-vel[0]), 3, 30)) * Versions[self.reward_version]['CS']
         else:
             self.steps_in_lane = 0
         
@@ -1441,22 +1417,16 @@ class AerialBattle(MultiAgentEnv):
 
             # Pursuit_angle
             mid_AN = 0.5
-            a_AN = -18
+            a_AN = -10
             logistic_term = 1.0 / (1.0 + np.exp(-a_AN * (adverse_angle - mid_AN)))
             reward_Pursuit['Pursuit_angle'] = (((track_angle - 2.0) * logistic_term - track_angle + 1.0) * 
                                                Versions[self.reward_version]['P'])
 
-            # Guidance
-            a_G = 18
-            mid_G = 0.2
-            reward_Pursuit['Guidance'] = (((2.0 / (1.0 + np.exp(-a_G * (mid_G - track_angle))))-1) * 
-                                          Versions[self.reward_version]['G'])
-
             # Closure
-            mid_CL = 0.5
-            a_CL = 18
+            mid_CL = 0.45
+            a_CL = 8
             closure_norm = self.get_closure_rate_norm(aircraft, closest_enemy_plane)
-            reward_Pursuit['Closure'] = ((2 * (1.0 / (1.0 + np.exp(-a_CL * (closure_norm - mid_CL)))) - 1.0) * 
+            reward_Pursuit['Closure'] = (((2.0 / (1.0 + np.exp(-a_CL * (closure_norm - mid_CL)))) - 1.0) * 
                                          Versions[self.reward_version]['CR'])
 
         else:
@@ -2196,6 +2166,9 @@ def Test_env():
     images = []
 
     # Reset the environment and get initial observations
+    for i in range(100):
+        env.reset()
+
     observations = env.reset()
     images.append(env.render())  # Render the initial state
 
@@ -2248,5 +2221,5 @@ def Test_env():
     # Clean up environment (if needed)
     env.close()
 
-Test_env()
+#Test_env()
 

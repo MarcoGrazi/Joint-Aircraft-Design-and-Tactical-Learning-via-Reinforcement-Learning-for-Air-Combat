@@ -1,0 +1,13 @@
+fonttools==4.58.1
+gymnasium==1.0.0
+imageio==2.37.0
+matplotlib==3.10.5
+numpy==2.3.2
+pandas==2.3.1
+plotly==6.1.2
+pygame==2.6.1
+PyYAML==6.0.2
+PyYAML==6.0.2
+ray==2.46.0
+torch==2.7.0
+wandb==0.21.0
