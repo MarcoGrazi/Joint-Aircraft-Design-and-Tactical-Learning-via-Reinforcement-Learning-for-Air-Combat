@@ -24,7 +24,7 @@ RunName = 'Train3_Pursuit_1'
 RunDescription = "Pursuit training run 1 against line dummy" 
 
 ConfigFile = 'Train_Run_config.yaml'
-Base_Checkpoint = ''
+Base_Checkpoint = ''#'GoodFlight_Checkpoint'
 Base_Policy_restore = ['team_0']  # Policies to restore from checkpoint
 
 # Path where training data and checkpoints will be stored
@@ -32,6 +32,26 @@ storage_path = os.path.join("/home/lsp/Desktop/ThesisCode", Folder)
 
 # Set your WandB API key for logging
 os.environ["WANDB_API_KEY"] = "1b8b77cc6fc3631890702b9ecbfed2fdc1551347"
+
+
+#Create RunName directory inside Folder, with RunDescription inside it
+# === Create Directory and Save Description ===
+run_path = os.path.join(Folder, RunName)
+os.makedirs(run_path, exist_ok=True)
+
+description_path = os.path.join(run_path, "description.txt")
+with open(description_path, "w") as f:
+    f.write(RunDescription)
+
+print(f"Created run directory and saved description at: {description_path}")
+
+# === Load YAML experiment configuration ===
+with open(ConfigFile) as f:
+    yaml_config = yaml.load(f, Loader=yaml.FullLoader)
+
+alg_config = yaml_config['alg_config']
+env_config = yaml_config['env_config']
+uav_config = yaml_config['uav_config']
 
 
 # === Custom Callbacks ===
@@ -46,7 +66,7 @@ class SaveArtifactsOnCheckpoint(DefaultCallbacks):
 
             env = algorithm.env_creator({'reward_version': 1})  # Must be num_env_runners = 1
 
-            for i in range(2):  # Save 5 rollouts
+            for i in range(3):  # Save 5 rollouts
                 checkpoint_dir_i = os.path.join(checkpoint_dir, f"{i}")
                 os.makedirs(checkpoint_dir_i, exist_ok=True)
 
@@ -113,8 +133,9 @@ class CustomWandbCallback(DefaultCallbacks):
         metrics["reward_max"] = env_metrics.get("episode_reward_max")
         metrics["reward_min"] = env_metrics.get("episode_reward_min")
         metrics["episode_len_mean"] = env_metrics.get("episode_len_mean")
-        metrics["cont_lane_time_mean"] = env_metrics["custom_metrics"].get("cont_lane_time_mean", 0)
-        metrics["cont_lane_time_max"] = env_metrics["custom_metrics"].get("cont_lane_time_max", 0)
+        metrics["kills_mean"] = env_metrics["custom_metrics"].get("kills_mean", 0)
+        metrics["attack_steps_max"] = env_metrics["custom_metrics"].get("attack_steps_max", 0)
+        metrics["attack_steps_mean"] = env_metrics["custom_metrics"].get("attack_steps_mean", 0)
 
         learner_stats = result.get("info", {}).get("learner", {}).get("team_0", {}).get("learner_stats", {})
         for key in ["alpha_value", "actor_loss", "critic_loss", "target_entropy"]:
@@ -143,7 +164,7 @@ class CallbacksBroker(DefaultCallbacks):
             checkpoint_path = os.path.join(storage_path, RunName, Base_Checkpoint)
             for id in Base_Policy_restore:
                 restored = algorithm.get_policy(id).from_checkpoint(checkpoint_path)[id]
-                algorithm.get_policy(id).set_state(restored.get_state())
+                algorithm.get_policy(id).set_weights(restored.get_weights())
                 print(f"Loaded policy {id}")
             print("\n++++++++++++++++++++++ Checkpoint Loaded +++++++++++++++++++++\n")
 
@@ -153,30 +174,13 @@ class CallbacksBroker(DefaultCallbacks):
     
     def on_episode_step(self, *, episode, **kwargs):
         common_info = episode._last_infos.get("__common__", {})
-        lane_metric = common_info.get("lane_time", None)
-        if lane_metric is not None:
-            episode.custom_metrics["cont_lane_time"] = (lane_metric)
+        attack_metric = common_info.get("attack_steps", None)
+        kill_metric = common_info.get("kills", None)
+        if attack_metric is not None:
+            episode.custom_metrics["attack_steps"] = (attack_metric)
+        if kill_metric is not None:
+            episode.custom_metrics["kills"] = (kill_metric)
     
-
-
-#Create RunName directory inside Folder, with RunDescription inside it
-# === Create Directory and Save Description ===
-run_path = os.path.join(Folder, RunName)
-os.makedirs(run_path, exist_ok=True)
-
-description_path = os.path.join(run_path, "description.txt")
-with open(description_path, "w") as f:
-    f.write(RunDescription)
-
-print(f"Created run directory and saved description at: {description_path}")
-
-# === Load YAML experiment configuration ===
-with open(ConfigFile) as f:
-    yaml_config = yaml.load(f, Loader=yaml.FullLoader)
-
-alg_config = yaml_config['alg_config']
-env_config = yaml_config['env_config']
-uav_config = yaml_config['uav_config']
 
 # === Environment Registration ===
 def env_creator(cfg):
@@ -213,14 +217,17 @@ def policy_mapping_fn(agent_id, episode=0, **kwargs):
 algo_config = (
     SACConfig()
     .api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False)
-    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1])})
+    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1,2,3,4,5,6,7,8,9,10])})
     .training(
         train_batch_size=tune.grid_search(alg_config['batch_size_per_learner']),
         gamma=tune.grid_search(alg_config['gamma']),
 
-        actor_lr=0.00003,
-        critic_lr = 0.0003,
-        initial_alpha = 0.3,
+        optimization_config = {
+            'actor_learning_rate': 0.00003,
+            'critic_learning_rate': 0.0003,
+            'entropy_learning_rate': 0.0003
+            },
+        initial_alpha = 0.5,
         tau = 0.005,
         grad_clip=50,
         replay_buffer_config={

@@ -510,7 +510,8 @@ class AerialBattle(MultiAgentEnv):
         self.agent_report = env_config["agent_report_name"]
         self.episode_rewards = {}     # Dict to accumulate rewards per agent
         self.episode_steps = 0
-        self.steps_in_lane = 0
+        self.attack_metric = 0
+        self.kill_metric = 0
 
         # === Aircraft/Agent Initialization ===
         self.possible_agents = []     # List of all agent names
@@ -578,7 +579,7 @@ class AerialBattle(MultiAgentEnv):
         y = y0 + r * np.sin(theta)
         return (x, y)
 
-    def init_airplane(self, aircraft, alive, testing):
+    def init_airplane(self, aircraft, alive, testing, team):
         """
         Initialize (or respawn) an aircraft with randomized position, orientation, and speed,
         depending on its team, alive status, and testing mode.
@@ -601,7 +602,7 @@ class AerialBattle(MultiAgentEnv):
 
                 # Random XY position around the base, clipped to stay inside map bounds
                 x, y = self.point_on_circumference(centroid[0], centroid[1],
-                                                    max_spawn_distance, np.random.uniform(0, 2*np.pi))
+                                                    max_spawn_distance, np.random.choice(0+(180 *team), -45-(90*team), 45+(90*team)))
                 x = np.clip(x, 100, self.env_size[0]-100)
                 y = np.clip(y, 100, self.env_size[0]-100)
                 z = -self.env_size[2] / 2  # Midpoint in altitude (Z+ down) # Spawn within combat area
@@ -612,7 +613,7 @@ class AerialBattle(MultiAgentEnv):
 
                 # Random XY position around the base, clipped to stay inside map bounds
                 x, y = self.point_on_circumference(centroid[0], centroid[1],
-                                                    max_spawn_distance, np.random.uniform(0, 2*np.pi))
+                                                    max_spawn_distance, np.random.choice(0+(180 *team), -45-(90*team), 45+(90*team)))
                 x = np.clip(x, 100, self.env_size[0]-100)
                 y = np.clip(y, 100, self.env_size[0]-100)
                 z = -self.env_size[2] / 2  # Midpoint in altitude (Z+ down) # Spawn within combat area
@@ -667,7 +668,8 @@ class AerialBattle(MultiAgentEnv):
         :return: (obs_dict, info_dict)
         """
         self.episode_steps = 0
-        self.steps_in_lane = 0
+        self.attack_metric = 0
+        self.kill_metric = 0
 
         # === Place team bases ===
         # Ensure bases are separated by min_bases_distance
@@ -696,7 +698,7 @@ class AerialBattle(MultiAgentEnv):
             for a in range(self.num_agents_team):
                 index = t * self.num_agents_team + a
                 aircraft = self.Aircrafts[index]
-                self.init_airplane(aircraft, alive_masks[t][a], testing=testing)
+                self.init_airplane(aircraft, alive_masks[t][a], testing=testing, team=t)
 
         # === Optionally convert one aircraft to a dummy agent ===
         if self.dummy != "none":
@@ -711,7 +713,7 @@ class AerialBattle(MultiAgentEnv):
             aircraft.set_dummy(self.dummy, self.turn_radius, self.direction)
 
         # === Return initial observation and info ===
-        return self.get_obs(), {'__common__': {'lane_time':self.steps_in_lane}}
+        return self.get_obs(), {'__common__': {'attack_steps' : self.attack_metric, 'kills': self.kill_metric}}
 
     def get_agent_ids(self):
         """
@@ -1349,8 +1351,107 @@ class AerialBattle(MultiAgentEnv):
                 'L': 0.1,
                 'CS': 0.4,
 
+                'P': 2,
+                'CR': 3,
+
+                'GFW': 0.2,
+                'PW': 0.8
+            },
+            2: {
+                'AL': 0.4,
+                'L': 0.1,
+                'CS': 0.4,
+
                 'P': 0.4,
                 'CR': 0.6,
+
+                'GFW': 0.2,
+                'PW': 0.8
+            },
+            3: {
+                'AL': 0.4,
+                'L': 0.1,
+                'CS': 0.4,
+
+                'P': 0.4,
+                'CR': 0.6,
+
+                'GFW': 0.1,
+                'PW': 0.9
+            },
+            4: {
+                'AL': 0.4,
+                'L': 0.1,
+                'CS': 0.4,
+
+                'P': 0.4,
+                'CR': 0.6,
+
+                'GFW': 0.2,
+                'PW': 0.8
+            },
+            5: {
+                'AL': 0.4,
+                'L': 0.1,
+                'CS': 0.4,
+
+                'P': 0.2,
+                'CR': 0.8,
+
+                'GFW': 0.2,
+                'PW': 0.8
+            },
+            6: {
+                'AL': 0.4,
+                'L': 0.1,
+                'CS': 0.4,
+
+                'P': 1,
+                'CR': 2,
+
+                'GFW': 0.2,
+                'PW': 0.8
+            },
+            7: {
+                'AL': 0.4,
+                'L': 0.1,
+                'CS': 0.4,
+
+                'P': 1,
+                'CR': 4,
+
+                'GFW': 0.2,
+                'PW': 0.8
+            },
+            8: {
+                'AL': 0.4,
+                'L': 0.1,
+                'CS': 0.4,
+
+                'P': 4,
+                'CR': 2,
+
+                'GFW': 0.2,
+                'PW': 0.8
+            },
+            9: {
+                'AL': 0.4,
+                'L': 0.1,
+                'CS': 0.4,
+
+                'P': 0.6,
+                'CR': 0.4,
+
+                'GFW': 0.2,
+                'PW': 0.8
+            },
+            10: {
+                'AL': 0.4,
+                'L': 0.1,
+                'CS': 0.4,
+
+                'P': 3,
+                'CR': 2,
 
                 'GFW': 0.2,
                 'PW': 0.8
@@ -1413,7 +1514,7 @@ class AerialBattle(MultiAgentEnv):
             mid_AN = 0.5
             a_AN = -10
             logistic_term = 1.0 / (1.0 + np.exp(-a_AN * (adverse_angle - mid_AN)))
-            reward_Pursuit['Pursuit_angle'] = (((track_angle - 2.0) * logistic_term - track_angle + 1.0) * 
+            reward_Pursuit['Pursuit'] = (((track_angle - 2.0) * logistic_term - track_angle + 1.0) * 
                                                Versions[self.reward_version]['P'])
 
             # Closure
@@ -1426,18 +1527,20 @@ class AerialBattle(MultiAgentEnv):
         else:
             #TODO: insert here some guidance to go towards the base and destroy it
             reward_Pursuit['Pursuit'] = 0
-            reward_Pursuit['Guidance'] = 0
             reward_Pursuit['Closure'] = 0
         
         #Sparse Pursuit Rewards:
         if missile_target != 'base':
-            Total_Reward['Attack'] = missile_tone_attack * 4
+            Total_Reward['Attack'] = 4 * missile_tone_attack
+            self.attack_metric += 1
         else:
             Total_Reward['Attack'] = 0  #TODO: change in subsequent trainings to destroy the base
-        Total_Reward['Defence'] = -missile_tone_defence * 5
 
-        if kill:
+        Total_Reward['Defence'] = -5 * missile_tone_defence
+
+        if kill != 'none':
             Total_Reward['Kill'] = 100
+            self.kill_metric += 1
 
         normalized_reward_Pursuit = sum(reward_Pursuit.values())
 
@@ -1462,7 +1565,7 @@ class AerialBattle(MultiAgentEnv):
             or aircraft.get_distance_from_centroid(self.bases) > self.max_size):
             self.Aircrafts[agent_index].kill()
             terminated = True
-            normalized_total_reward = -100
+            normalized_total_reward = -1000
 
 
         self.episode_rewards[self.possible_agents[agent_index]].append(Total_Reward.copy())
@@ -1606,7 +1709,7 @@ class AerialBattle(MultiAgentEnv):
 
         # === Optional: Add team-based rewards here ===
         # (e.g., base destruction, shared victories, assists, etc.)
-        return self.get_obs(), rewards, terminated, truncated, {'__common__': {'lane_time':self.steps_in_lane}}
+        return self.get_obs(), rewards, terminated, truncated, {'__common__': {'attack_steps' : self.attack_metric, 'kills': self.kill_metric}}
 
 
         """
