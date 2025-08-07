@@ -602,7 +602,7 @@ class AerialBattle(MultiAgentEnv):
 
                 # Random XY position around the base, clipped to stay inside map bounds
                 x, y = self.point_on_circumference(centroid[0], centroid[1],
-                                                    max_spawn_distance, np.random.choice(0+(180 *team), -45-(90*team), 45+(90*team)))
+                                                    max_spawn_distance, np.random.choice([0+(180 *team), -45-(90*team), 45+(90*team)]))
                 x = np.clip(x, 100, self.env_size[0]-100)
                 y = np.clip(y, 100, self.env_size[0]-100)
                 z = -self.env_size[2] / 2  # Midpoint in altitude (Z+ down) # Spawn within combat area
@@ -613,7 +613,7 @@ class AerialBattle(MultiAgentEnv):
 
                 # Random XY position around the base, clipped to stay inside map bounds
                 x, y = self.point_on_circumference(centroid[0], centroid[1],
-                                                    max_spawn_distance, np.random.choice(0+(180 *team), -45-(90*team), 45+(90*team)))
+                                                    max_spawn_distance, np.random.choice([0+(180 *team), -45-(90*team), 45+(90*team)]))
                 x = np.clip(x, 100, self.env_size[0]-100)
                 y = np.clip(y, 100, self.env_size[0]-100)
                 z = -self.env_size[2] / 2  # Midpoint in altitude (Z+ down) # Spawn within combat area
@@ -709,7 +709,7 @@ class AerialBattle(MultiAgentEnv):
             index = t * self.num_agents_team + a
             aircraft = self.Aircrafts[index]
 
-            self.init_airplane(aircraft, alive=True, testing=testing)
+            self.init_airplane(aircraft, alive=True, testing=testing, team=t)
             aircraft.set_dummy(self.dummy, self.turn_radius, self.direction)
 
         # === Return initial observation and info ===
@@ -1352,7 +1352,7 @@ class AerialBattle(MultiAgentEnv):
                 'CS': 0.4,
 
                 'P': 2,
-                'CR': 3,
+                'CR':3,
 
                 'GFW': 0.2,
                 'PW': 0.8
