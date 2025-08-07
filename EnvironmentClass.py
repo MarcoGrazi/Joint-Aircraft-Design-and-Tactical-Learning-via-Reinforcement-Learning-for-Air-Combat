@@ -632,23 +632,19 @@ class AerialBattle(MultiAgentEnv):
 
         # Compute orientation to target base (Euler angles or equivalent)
         rand_orient = self.orientation_to_target(rand_pos, centroid)
-        #pitch = 0
-        rand_orient[1] = 0
+        discrete_pitch, discrete_yaw = self.spawning_orientations
+        # Random roll ∈ [-10°, +10°]
+        rand_orient[0] = np.deg2rad(np.random.uniform(-10, 10))  # roll
 
-        # === Add randomness to orientation if in training mode ===
-        if not testing:
-            discrete_pitch, discrete_yaw = self.spawning_orientations
-            # Random roll ∈ [-10°, +10°]
-            rand_orient[0] = np.deg2rad(np.random.uniform(-10, 10))  # roll
+        # Discrete pitch from predefined list (e.g., [0, 5, -5])
+        rand_orient[1] = np.deg2rad(np.random.choice(discrete_pitch))  # pitch
 
-            # Discrete pitch from predefined list (e.g., [0, 5, -5])
-            rand_orient[1] = np.deg2rad(np.random.choice(discrete_pitch))  # pitch
-
-            # Add yaw offset to prevent identical spawn orientations
-            rand_orient[2] += np.deg2rad(np.random.choice(discrete_yaw))   # yaw
+        # Add yaw offset to prevent identical spawn orientations
+        rand_orient[2] += np.deg2rad(np.random.choice(discrete_yaw))   # yaw
+        
 
         # === Initial airspeed between 150–200 m/s ===
-        rand_speed = np.random.uniform(150, 250)
+        rand_speed = np.random.choice([100, 130, 150, 180, 200])
 
         # === Final step: apply the randomized state to the aircraft ===
         aircraft.reset(rand_pos, rand_orient, rand_speed, alive)
@@ -1473,9 +1469,9 @@ class AerialBattle(MultiAgentEnv):
                                          Versions[self.reward_version]['CR'])
             
             if missile_target != 'base':
-                Total_Reward['Attack'] = 20 * missile_tone_attack * track_angle
+                Total_Reward['Attack'] = 10 * missile_tone_attack * track_angle
                 self.attack_metric += 1
-            Total_Reward['Defence'] = -30 * missile_tone_defence * adverse_angle
+            Total_Reward['Defence'] = -12 * missile_tone_defence * adverse_angle
 
         else:
             #TODO: insert here some guidance to go towards the base and destroy it
@@ -1509,7 +1505,7 @@ class AerialBattle(MultiAgentEnv):
         #check collision or over-g
         if (self.check_collision(agent_index) 
             or acc >= (20*9.81) 
-            or vel[0]<100 
+            or vel[0]<80 
             or altitude>self.env_size[2]
             or aircraft.get_distance_from_centroid(self.bases) > self.max_size):
             self.Aircrafts[agent_index].kill()
@@ -1649,49 +1645,23 @@ class AerialBattle(MultiAgentEnv):
         if self.episode_steps > self.max_steps:
             terminated['__all__'] = True
 
+        
         # === Special case: end if dummy aircraft dies ===
-        if len(terminated) == 2:  # only one agent + "__all__"
-            for k in terminated.keys():
-                if k != '__all__' and self.Aircrafts[self.agents.index(k)].is_dummy():
+        for team in range(self.num_teams):
+            at_least_one_alive = 0
+            for a in range(self.num_agents_team):
+                if self.Aircrafts[team*self.num_teams + a].is_alive():
+                    at_least_one_alive += 1
+            if at_least_one_alive == 0:
+                for k in terminated.keys():
                     terminated[k] = True
                     terminated['__all__'] = True
+        
 
         # === Optional: Add team-based rewards here ===
         # (e.g., base destruction, shared victories, assists, etc.)
         return self.get_obs(), rewards, terminated, truncated, {'__common__': {'attack_steps' : self.attack_metric, 'kills': self.kill_metric}}
 
-
-        """
-        Compute the rotation matrix from the body frame to the wind frame.
-
-        The wind frame is aligned with the relative airflow:
-        - X_w: direction of incoming air (opposite to velocity vector)
-        - Y_w: lateral direction (perpendicular to X_w in horizontal plane)
-        - Z_w: completes right-handed system (typically points down if AoA > 0)
-
-        :param AoA: Angle of Attack [rad]
-        :param sideslip: Sideslip angle [rad]
-
-        :return: 3x3 rotation matrix R such that:
-                v_wind = R @ v_body
-        """
-
-        # === Trig shorthands ===
-        ca = np.cos(AoA)
-        sa = np.sin(AoA)
-        cb = np.cos(sideslip)
-        sb = np.sin(sideslip)
-
-        # === Rotation matrix: Body → Wind ===
-        # This transforms a vector from body coordinates to wind-aligned coordinates.
-        # Order: sideslip (Y-axis), then angle of attack (Z-axis)
-        R = np.array([
-            [cb * ca, sb, cb * sa],
-            [-sb * ca, cb, -sb * sa],
-            [-sa,     0,   ca]
-        ])
-
-        return R
     
     def body_to_vehicle(self, roll, pitch, yaw):
         """
@@ -2232,7 +2202,7 @@ def Test_env():
     a = 0  # Action index pointer
 
     # Run simulation for 20 steps per predefined action set
-    for step in range(len(predefined_actions) * 100):
+    for step in range(len(predefined_actions) * 200):
         # Update the action index every 50 steps
         if step % 100 == 0 and step != 0:
             a += 1
@@ -2268,5 +2238,5 @@ def Test_env():
     # Clean up environment (if needed)
     env.close()
 
-#Test_env()
+Test_env()
 
