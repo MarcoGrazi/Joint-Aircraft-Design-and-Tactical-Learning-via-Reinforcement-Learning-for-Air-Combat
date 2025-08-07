@@ -20,8 +20,10 @@ from ray.tune.registry import register_env
 
 # === Configuration Paths ===
 Folder = 'Training_Runs'
-RunName = 'Train3_Pursuit_1'
-RunDescription = "Pursuit training run 1 against line dummy" 
+RunName = 'Train3_Pursuit_2'
+RunDescription = "Pursuit training run 2 against line dummy.\n " \
+                 "further reward shaping refinement, with observation modification\n" \
+                 "to include relative velocity in body frame for each target" 
 
 ConfigFile = 'Train_Run_config.yaml'
 Base_Checkpoint = ''#'GoodFlight_Checkpoint'
@@ -217,7 +219,7 @@ def policy_mapping_fn(agent_id, episode=0, **kwargs):
 algo_config = (
     SACConfig()
     .api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False)
-    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1,2,3,4,5,6,7,8,9,10])})
+    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1,2,3,4,5])})
     .training(
         train_batch_size=tune.grid_search(alg_config['batch_size_per_learner']),
         gamma=tune.grid_search(alg_config['gamma']),

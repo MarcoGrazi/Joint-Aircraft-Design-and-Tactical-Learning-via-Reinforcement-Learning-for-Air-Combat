@@ -592,6 +592,7 @@ class AerialBattle(MultiAgentEnv):
 
         centroid = np.mean(self.bases, axis=0)
         centroid[2] = self.env_size[2]/2
+        delta = (2 * np.pi) / self.num_teams
 
         if alive:
             # === Alive agent: spawn near own base, inside vulnerability radius ===
@@ -602,7 +603,7 @@ class AerialBattle(MultiAgentEnv):
 
                 # Random XY position around the base, clipped to stay inside map bounds
                 x, y = self.point_on_circumference(centroid[0], centroid[1],
-                                                    max_spawn_distance, np.random.choice([0+(180 *team), -45-(90*team), 45+(90*team)]))
+                                                    max_spawn_distance, team*delta)
                 x = np.clip(x, 100, self.env_size[0]-100)
                 y = np.clip(y, 100, self.env_size[0]-100)
                 z = -self.env_size[2] / 2  # Midpoint in altitude (Z+ down) # Spawn within combat area
@@ -613,7 +614,7 @@ class AerialBattle(MultiAgentEnv):
 
                 # Random XY position around the base, clipped to stay inside map bounds
                 x, y = self.point_on_circumference(centroid[0], centroid[1],
-                                                    max_spawn_distance, np.random.choice([0+(180 *team), -45-(90*team), 45+(90*team)]))
+                                                    max_spawn_distance, team*delta)
                 x = np.clip(x, 100, self.env_size[0]-100)
                 y = np.clip(y, 100, self.env_size[0]-100)
                 z = -self.env_size[2] / 2  # Midpoint in altitude (Z+ down) # Spawn within combat area
@@ -986,6 +987,8 @@ class AerialBattle(MultiAgentEnv):
                         # Relative position (polar)
                         i_obs.extend(self.relative_polar_pos_Body(i, j, 'aircraft'))
 
+                        i_obs.extend(self.relative_polar_vel_Body(i, j, 'aircraft'))
+
                         # Closure rate (relative velocity along line of sight)
                         i_obs.append(self.get_closure_rate_norm(self.Aircrafts[i], self.Aircrafts[j]))
 
@@ -1348,95 +1351,7 @@ class AerialBattle(MultiAgentEnv):
         Versions = {
             1: {
                 'AL': 0.4,
-                'L': 0.1,
-                'CS': 0.4,
-
-                'P': 2,
-                'CR':3,
-
-                'GFW': 0.2,
-                'PW': 0.8
-            },
-            2: {
-                'AL': 0.4,
-                'L': 0.1,
-                'CS': 0.4,
-
-                'P': 0.4,
-                'CR': 0.6,
-
-                'GFW': 0.2,
-                'PW': 0.8
-            },
-            3: {
-                'AL': 0.4,
-                'L': 0.1,
-                'CS': 0.4,
-
-                'P': 0.4,
-                'CR': 0.6,
-
-                'GFW': 0.1,
-                'PW': 0.9
-            },
-            4: {
-                'AL': 0.4,
-                'L': 0.1,
-                'CS': 0.4,
-
-                'P': 0.4,
-                'CR': 0.6,
-
-                'GFW': 0.2,
-                'PW': 0.8
-            },
-            5: {
-                'AL': 0.4,
-                'L': 0.1,
-                'CS': 0.4,
-
-                'P': 0.2,
-                'CR': 0.8,
-
-                'GFW': 0.2,
-                'PW': 0.8
-            },
-            6: {
-                'AL': 0.4,
-                'L': 0.1,
-                'CS': 0.4,
-
-                'P': 1,
-                'CR': 2,
-
-                'GFW': 0.2,
-                'PW': 0.8
-            },
-            7: {
-                'AL': 0.4,
-                'L': 0.1,
-                'CS': 0.4,
-
-                'P': 1,
-                'CR': 4,
-
-                'GFW': 0.2,
-                'PW': 0.8
-            },
-            8: {
-                'AL': 0.4,
-                'L': 0.1,
-                'CS': 0.4,
-
-                'P': 4,
-                'CR': 2,
-
-                'GFW': 0.2,
-                'PW': 0.8
-            },
-            9: {
-                'AL': 0.4,
-                'L': 0.1,
+                'L': 0.2,
                 'CS': 0.4,
 
                 'P': 0.6,
@@ -1445,16 +1360,49 @@ class AerialBattle(MultiAgentEnv):
                 'GFW': 0.2,
                 'PW': 0.8
             },
-            10: {
+            2: {
                 'AL': 0.4,
-                'L': 0.1,
+                'L': 0.2,
                 'CS': 0.4,
 
-                'P': 3,
-                'CR': 2,
+                'P': 0.8,
+                'CR': 0.2,
 
                 'GFW': 0.2,
                 'PW': 0.8
+            },
+            3: {
+                'AL': 0.4,
+                'L': 0.2,
+                'CS': 0.4,
+
+                'P': 0.5,
+                'CR': 0.5,
+
+                'GFW': 0.2,
+                'PW': 0.8
+            },
+            4: {
+                'AL': 0.4,
+                'L': 0.2,
+                'CS': 0.4,
+
+                'P': 0.6,
+                'CR': 0.4,
+
+                'GFW': 0.4,
+                'PW': 0.6
+            },
+            5: {
+                'AL': 0.4,
+                'L': 0.2,
+                'CS': 0.4,
+
+                'P': 0.6,
+                'CR': 0.4,
+
+                'GFW': 0.1,
+                'PW': 0.9
             },
         }
 
@@ -1531,15 +1479,15 @@ class AerialBattle(MultiAgentEnv):
         
         #Sparse Pursuit Rewards:
         if missile_target != 'base':
-            Total_Reward['Attack'] = 4 * missile_tone_attack
+            Total_Reward['Attack'] = 20 * missile_tone_attack * track_angle
             self.attack_metric += 1
         else:
             Total_Reward['Attack'] = 0  #TODO: change in subsequent trainings to destroy the base
 
-        Total_Reward['Defence'] = -5 * missile_tone_defence
+        Total_Reward['Defence'] = -30 * missile_tone_defence * adverse_angle
 
         if kill != 'none':
-            Total_Reward['Kill'] = 100
+            Total_Reward['Kill'] = 1000
             self.kill_metric += 1
 
         normalized_reward_Pursuit = sum(reward_Pursuit.values())
