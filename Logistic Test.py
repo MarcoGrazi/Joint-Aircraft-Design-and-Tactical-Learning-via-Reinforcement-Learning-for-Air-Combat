@@ -2,15 +2,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def logistic(x, alpha=10, midpoint=0.1):
-    return 1 / (1 + np.exp(-alpha * (x - midpoint)))
+    return np.tan(x*(np.pi/2.5)) / np.tan(np.pi/2.5)
 
 
 # Extended X-axis range
-x = np.linspace(0, 1, 500)
+x = np.linspace(-1, 1, 500)
 y = logistic(x, alpha=8, midpoint=0.45)
 plt.figure(figsize=(8, 5))
 plt.plot(x, y, label='Sigmoid Curve', color='blue')
-plt.axvline(0.25, color='gray', linestyle='--', label='Midpoint (0.25)')
+plt.axvline(0, color='gray', linestyle='--', label='Midpoint (0)')
 plt.title('Full Logistic (Sigmoid) Function Curve')
 plt.xlabel('Standard Deviation')
 plt.ylabel('Penalty')

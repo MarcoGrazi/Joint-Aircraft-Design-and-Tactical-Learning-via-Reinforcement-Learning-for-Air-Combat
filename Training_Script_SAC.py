@@ -20,10 +20,9 @@ from ray.tune.registry import register_env
 
 # === Configuration Paths ===
 Folder = 'Training_Runs'
-RunName = 'Train3_Pursuit_2'
-RunDescription = "Pursuit training run 2 against line dummy.\n " \
-                 "further reward shaping refinement, with observation modification\n" \
-                 "to include relative velocity in body frame for each target" 
+RunName = 'Train3_Pursuit_3'
+RunDescription = "Pursuit training run 3 against line dummy.\n " \
+                 "reward modifications and bug fixes\n"
 
 ConfigFile = 'Train_Run_config.yaml'
 Base_Checkpoint = ''#'GoodFlight_Checkpoint'
@@ -213,13 +212,18 @@ def policy_mapping_fn(agent_id, episode=0, **kwargs):
     if agent_id.startswith("agent_1"):
         return "team_1"
 
+def name_creator(trial):
+    name = f"Trial_{trial.config['gamma']}_{trial.config['train_batch_size']}_" \
+           f"{trial.config['env_config']['reward_version']}_" \
+           f"{trial.config['replay_buffer_config']['capacity']}"
+    return name
 
 
 # === Algorithm Configuration ===
 algo_config = (
     SACConfig()
     .api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False)
-    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1,2,3,4,5])})
+    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1,2,3,4])})
     .training(
         train_batch_size=tune.grid_search(alg_config['batch_size_per_learner']),
         gamma=tune.grid_search(alg_config['gamma']),
@@ -229,12 +233,12 @@ algo_config = (
             'critic_learning_rate': 0.0003,
             'entropy_learning_rate': 0.0003
             },
-        initial_alpha = 0.5,
+        initial_alpha = 1,
         tau = 0.005,
         grad_clip=50,
         replay_buffer_config={
             'type': 'MultiAgentReplayBuffer',
-            'capacity': 400000,
+            'capacity': tune.grid_search([250000, 400000, 500000]),
         }
     )
     .env_runners(
@@ -259,8 +263,8 @@ tuner = tune.Tuner(
     trainable="SAC",
     param_space=algo_config,
     tune_config=TuneConfig(
-        trial_name_creator=lambda trial: f"trial_{trial.trial_id[:10]}",
-        trial_dirname_creator=lambda trial: f"trial_{trial.trial_id[:10]}"
+        trial_name_creator=lambda trial: name_creator(trial),
+        trial_dirname_creator=lambda trial: name_creator(trial)
     ),
     run_config=RunConfig(
         name=RunName,

@@ -132,7 +132,7 @@ class FixedWingAircraft:
         self.telemetry['orientation'].append(self.o.copy())
         self.telemetry['velocity'].append(self.v.copy())
         self.telemetry['angular_velocity'].append(self.w.copy())
-        self.telemetry['acceleration'].append([0, 0, 9.8])    # Assuming rest + gravity in Z by default
+        self.telemetry['acceleration'].append([0, 0, 0])    # Assuming rest + gravity in Z by default
         self.telemetry['AoA'].append(0)                       # Angle of Attack (deg or rad)
         self.telemetry['sideslip'].append(0)                  # Sideslip angle (deg or rad)
         self.telemetry['force'].append([0, 0, 0])             # Net aerodynamic + thrust forces
@@ -222,7 +222,7 @@ class FixedWingAircraft:
         acc = np.linalg.norm(a)
         if acc > self.max_acc * self.g:
             a = (a / acc) * (self.max_acc * self.g)
-
+        
         self.v += a * self.dt  # Integrate linear velocity in body frame
 
         # === Cap maximum forward speed ===
@@ -370,10 +370,10 @@ class FixedWingAircraft:
 
         # === Aerodynamic moments (body frame) ===
         # Moments from aerodynamic force offset from CG
-        M_airframe = np.cross(self.a_COF, f_airframe_body)
+        M_airframe = np.cross(self.a_COF, f_airframe_wind)
         M_aleirons = roll_moment_aleirons  # Direct moment from aileron differential lift
-        M_elevons = np.cross(self.el_COF, f_elevons_body)
-        M_rudders = np.cross(self.r_COF, f_rudders_body)
+        M_elevons = np.cross(self.el_COF, f_elevons_wind)
+        M_rudders = np.cross(self.r_COF, f_rudders_wind)
 
         # Total moment
         M_aero = M_airframe + M_aleirons + M_elevons + M_rudders
@@ -487,8 +487,8 @@ class FixedWingAircraft:
 
         # === Aerodynamic coefficients ===
         # Lift is assumed linear in angle; you use a simplified model here.
-        CL = 0.6 * angle  # Negate for consistent convention: positive deflection → nose-up
-        CD = np.polyval(self.el_CD_c, angle * 40)  # Drag increases with deflection
+        CL = 0.6 * -angle  # Negate for consistent convention: positive deflection → nose-up
+        CD = np.polyval(self.el_CD_c, -angle * 40)  # Drag increases with deflection
 
         # === Dynamic pressure ===
         q = 0.5 * self.rho * V**2
@@ -500,8 +500,8 @@ class FixedWingAircraft:
 
         return np.array([
             -drag,     # -X_w: drag resists motion
-            -lateral,   #  Y_w: assumed zero
-            -lift       #  Z_w: lift acts upward in body frame (positive here)
+            lateral,   #  Y_w: assumed zero
+            lift       #  Z_w: lift acts upward in body frame (positive here)
         ])
 
     def Rudders(self, angle, V):

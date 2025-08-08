@@ -82,7 +82,7 @@ def plot_telemetry(telemetry, save_folder):
 
 
 # Load config
-with open("Training_Runs/Test/Test_config.yaml") as f:
+with open("Train_Run_config.yaml") as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
 # PID state variables (initialize globally or later wrap in a class)
@@ -166,28 +166,28 @@ aircraft = FixedWingAircraft(config['uav_config'], config['env_config']['rho'],
 aircraft.reset([0,0,0], [0,0,0], 150)
 
 commands_sequence = [
-    [0.5, 0, 0.5, 0.8],
-    [0.5, 0, 0.5, 0.8],
-    [0.03, 0, 0.5, 0.8],
-    [0.03, 0, 0.5, 0.8],
-    [0.03, 0, 0, 0.8],
-    [0.03, 0, 0, 0.8],
-    [0.03, 0, 0, 0.8],
-    [0.03, 0, 0, 0.8],
-    [0.03, 0, 0, 0.8],
-    [0.03, 0, 0, 0.8],
+    [1, -0.1, 0.0, 0],
+    [1, -0.1, 0.0, 0],
+    [1, -0.1, 0.0, 0],
+    [1, -0.1, 0.0, 0],
+    [1, -0.1, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+    [0.0, 0, 0, 0],
+    [0.0, 0, 0, 0],
 ]
 c = 0
 command = commands_sequence[c]
-for i in range(240):
-    if i%24 == 0 and i != 0:
+for i in range(1200):
+    if i%120 == 0 and i != 0:
         c += 1
         print(c)
         command = commands_sequence[c]
         print(command)
 
-    t, e, a, r = PID_Control(command)
-    aircraft.step(t, e, a, r)
+    t, e, a, r = command
+    aircraft.step(t, e, a, r, [0,0,0,0])
 
 plot_telemetry(aircraft.getTelemetry(), 'PID_TEST')
 

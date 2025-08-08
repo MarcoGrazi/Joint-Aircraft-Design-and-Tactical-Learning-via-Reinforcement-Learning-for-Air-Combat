@@ -1288,33 +1288,29 @@ class AerialBattle(MultiAgentEnv):
 
     def get_track_adverse_angles_norm(self, aircraft, target_aircraft):
         agent_pos = np.array(aircraft.get_agent_telemetry()['position'][-1])
-        agent_vel = aircraft.get_absolute_vel()
-        target_pos = np.array(target_aircraft.get_agent_telemetry()['position'][-1])
-        target_vel = target_aircraft.get_absolute_vel()
+        roll, pitch, yaw = aircraft.get_agent_telemetry()['orientation'][-1]
+        agent_R = self.body_to_vehicle(roll, pitch, yaw)
+        agent_forward = agent_R @ np.array([1, 0, 0])
+        agent_forward_unit = agent_forward / np.linalg.norm(agent_forward)
 
-        agent_vel = np.where(agent_vel < 1e-3, 1.0, agent_vel)
-        target_vel = np.where(target_vel < 1e-3, 1.0, target_vel)
+        target_pos = np.array(target_aircraft.get_agent_telemetry()['position'][-1])
+        roll, pitch, yaw = target_aircraft.get_agent_telemetry()['orientation'][-1]
+        target_R = self.body_to_vehicle(roll, pitch, yaw)
+        target_forward = target_R @ np.array([1, 0, 0])
+        target_forward_unit = target_forward / np.linalg.norm(target_forward)
 
         # vector from agent to target (LOS)
         los_vec = target_pos - agent_pos
+        los_vec_unit = los_vec / np.linalg.norm(los_vec)
 
-        # normalize both
-        vel_norm = agent_vel / np.linalg.norm(agent_vel)
-        los_norm = los_vec / np.linalg.norm(los_vec)
+        track_angle = np.arccos(np.clip(agent_forward_unit @ los_vec_unit, -1.0, 1.0))
 
-        # track angle in radians
-        track_angle = np.arccos(np.clip(np.dot(vel_norm, los_norm), -1.0, 1.0))
+        # vector from agent to target (LOS)
+        los_vec = agent_pos - target_pos
+        los_vec_unit = los_vec / np.linalg.norm(los_vec)
+        adverse_angle = np.arccos(np.clip(target_forward_unit @ los_vec_unit, -1.0, 1.0))
 
-        los_vec_from_target = agent_pos - target_pos
-
-        # normalize both
-        tgt_vel_norm = target_vel / np.linalg.norm(target_vel)
-        los_from_target_norm = los_vec_from_target / np.linalg.norm(los_vec_from_target)
-
-        # adverse angle in radians
-        adverse_angle = np.arccos(np.clip(np.dot(tgt_vel_norm, los_from_target_norm), -1.0, 1.0))
-
-        return track_angle, adverse_angle
+        return track_angle / np.pi, adverse_angle/np.pi
     
     def get_closure_rate_norm(self, aircraft, target_aircraft):
         agent_pos = np.array(aircraft.get_agent_telemetry()['position'][-1])
@@ -1326,9 +1322,8 @@ class AerialBattle(MultiAgentEnv):
         los_vec = target_pos - agent_pos
         los_unit = los_vec / (np.linalg.norm(los_vec) + 1e-6)  # prevent div by zero
         closure = -np.dot(rel_vel, los_unit)
-        min_closure = -686
-        max_closure = 686
-        return np.clip((closure - min_closure) / (max_closure - min_closure), 0, 1)
+        
+        return closure/686
 
 
     def get_individual_reward(self, agent_index, action, kill, missile_tone_attack, missile_tone_defence, missile_target):
@@ -1353,8 +1348,8 @@ class AerialBattle(MultiAgentEnv):
                 'P': 0.6,
                 'CR': 0.4,
 
-                'GFW': 0.2,
-                'PW': 0.8
+                'GFW': 0.1,
+                'PW': 0.9
             },
             2: {
                 'AL': 0.4,
@@ -1364,8 +1359,8 @@ class AerialBattle(MultiAgentEnv):
                 'P': 0.8,
                 'CR': 0.2,
 
-                'GFW': 0.2,
-                'PW': 0.8
+                'GFW': 0.1,
+                'PW': 0.9
             },
             3: {
                 'AL': 0.4,
@@ -1375,8 +1370,8 @@ class AerialBattle(MultiAgentEnv):
                 'P': 0.5,
                 'CR': 0.5,
 
-                'GFW': 0.2,
-                'PW': 0.8
+                'GFW': 0.1,
+                'PW': 0.9
             },
             4: {
                 'AL': 0.4,
@@ -1386,19 +1381,8 @@ class AerialBattle(MultiAgentEnv):
                 'P': 0.6,
                 'CR': 0.4,
 
-                'GFW': 0.4,
-                'PW': 0.6
-            },
-            5: {
-                'AL': 0.4,
-                'L': 0.2,
-                'CS': 0.4,
-
-                'P': 0.6,
-                'CR': 0.4,
-
-                'GFW': 0.1,
-                'PW': 0.9
+                'GFW': 0.2,
+                'PW': 0.8
             },
         }
 
@@ -1415,11 +1399,11 @@ class AerialBattle(MultiAgentEnv):
         
         a_S = 15
         mid_S = 0.2
-        abs_speed = abs(200-vel[0]) / 143
+        abs_speed = abs(280-vel[0]) / 200
         reward_Flight['Cruise Speed'] = -((1/(1 + np.exp(-a_S * (abs_speed - mid_S)))) * 
                                           Versions[self.reward_version]['CS'])
-        reward_Flight['Cruise Speed'] = ((abs(200-vel[0]) < 70) *
-                                      (70/np.clip(abs(self.env_size[2]/2 - altitude), 10, 70)) 
+        reward_Flight['Cruise Speed'] = ((abs(280-vel[0]) < 70) *
+                                      (70/np.clip(abs(self.env_size[2]/2 - altitude), 7, 70)) 
                                       * Versions[self.reward_version]['CS'])
         
 
@@ -1451,27 +1435,20 @@ class AerialBattle(MultiAgentEnv):
 
         if closest_enemy_plane is not None:
             track_angle, adverse_angle = self.get_track_adverse_angles_norm(aircraft, closest_enemy_plane)
-            track_angle /= np.pi
-            adverse_angle /= np.pi
 
             # Pursuit_angle
-            mid_AN = 0.5
-            a_AN = -10
-            logistic_term = 1.0 / (1.0 + np.exp(-a_AN * (adverse_angle - mid_AN)))
-            reward_Pursuit['Pursuit'] = (((track_angle - 2.0) * logistic_term - track_angle + 1.0) * 
-                                               Versions[self.reward_version]['P'])
+            shaped_pursuit = np.tan((adverse_angle-track_angle)*(np.pi/2.5)) / np.tan(np.pi/2.5)
+            reward_Pursuit['Pursuit'] = shaped_pursuit * Versions[self.reward_version]['P']
 
             # Closure
-            mid_CL = 0.45
-            a_CL = 8
             closure_norm = self.get_closure_rate_norm(aircraft, closest_enemy_plane)
-            reward_Pursuit['Closure'] = (((2.0 / (1.0 + np.exp(-a_CL * (closure_norm - mid_CL)))) - 1.0) * 
-                                         Versions[self.reward_version]['CR'])
+            shaped_closure = np.tan(closure_norm*(np.pi/2.5)) / np.tan(np.pi/2.5)
+            reward_Pursuit['Closure'] = shaped_closure * Versions[self.reward_version]['CR']
             
             if missile_target != 'base':
                 Total_Reward['Attack'] = 10 * missile_tone_attack * track_angle
                 self.attack_metric += 1
-            Total_Reward['Defence'] = -12 * missile_tone_defence * adverse_angle
+            Total_Reward['Defence'] = -10 * missile_tone_defence * adverse_angle
 
         else:
             #TODO: insert here some guidance to go towards the base and destroy it
@@ -1515,7 +1492,6 @@ class AerialBattle(MultiAgentEnv):
 
         self.episode_rewards[self.possible_agents[agent_index]].append(Total_Reward.copy())
         return normalized_total_reward, terminated, truncated
-
 
     def CLI_report(self, telemetry, action):
         """
@@ -1650,7 +1626,7 @@ class AerialBattle(MultiAgentEnv):
         for team in range(self.num_teams):
             at_least_one_alive = 0
             for a in range(self.num_agents_team):
-                if self.Aircrafts[team*self.num_teams + a].is_alive():
+                if self.Aircrafts[team*self.num_agents_team + a].is_alive():
                     at_least_one_alive += 1
             if at_least_one_alive == 0:
                 for k in terminated.keys():
@@ -1700,10 +1676,10 @@ class AerialBattle(MultiAgentEnv):
 
         # Construct ZYX rotation matrix
         R = np.array([
-            [cp * cy, cp * sy, -sp],
-            [sy * sp * cy - cr * sy, sr * sp * sy + cr * cy, sr * cp],
-            [cr * sp * cy + sr * sy, cy * sp * sy - sr * cy, cr * cp]
-        ])
+            [cp*cy,                 cp*sy,                 -sp],
+            [sr*sp*cy - cr*sy,      sr*sp*sy + cr*cy,      sr*cp],
+            [cr*sp*cy + sr*sy,      cr*sp*sy - sr*cy,      cr*cp]
+            ])
         return R
 
     def render(self, screen_size=(800, 800), mode='rgb_array', altitude_range=(0, 100)):
@@ -2192,19 +2168,19 @@ def Test_env():
     # Define fixed actions per agent for evaluation
     # Format: [Up_Angle, Side_Angle, Speed, Fire], all normalized in body frame
     predefined_actions = [
-        [0.08, 0.1, 1, 0],
-        [-0.07, 0, 1, 0],
-        [-0.07, 0, 1, 0],
-        [-0.07, 0, 1, 0],
-        [-0.07, 0, 1, 0]
+        [0.003, 0, 1, 0],
+        [0.003, 0, 1, 0],
+        [0.003, 0, 1, 0],
+        [0.003, 0, 1, 0],
+        [0.003, 0, 1, 0]
     ]
 
     a = 0  # Action index pointer
 
     # Run simulation for 20 steps per predefined action set
-    for step in range(len(predefined_actions) * 200):
+    for step in range(len(predefined_actions) * 150):
         # Update the action index every 50 steps
-        if step % 100 == 0 and step != 0:
+        if step % 150 == 0 and step != 0:
             a += 1
 
         # Build action dictionary for alive agents
@@ -2238,5 +2214,5 @@ def Test_env():
     # Clean up environment (if needed)
     env.close()
 
-Test_env()
+#Test_env()
 
