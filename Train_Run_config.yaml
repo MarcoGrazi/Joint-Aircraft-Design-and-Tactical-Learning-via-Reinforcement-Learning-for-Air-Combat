@@ -25,7 +25,7 @@
       'attack_vulnerability_cone': [120, 1000, 5000],
       'base_vulnerability_distance': 1500,
       'collision_distance': 30,
-      'dummy': 'mixed', # 'line', 'curve', 'none', 'mixed'
+      'dummy': 'random', # 'line', 'curve', 'none', 'mixed', 'random'
       'dummy_turn_radius':5000,
       'dummy_direction':1,
       'alive_agents_start': 1,

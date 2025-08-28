@@ -66,6 +66,8 @@ class Aircraft:
         self.dummy_type = "none"                    # "none" or dummy behavior name
         self.turn_radius = 0                        # Dummy circular turn radius (if used)
         self.direction = 0                          # Dummy turn direction: +1 or -1
+        self.random_dummy_counter = 0
+        self.random_dummy_type = "none"
 
     def set_dummy(self, type, turn_radius='500', direction=1.0):
         """
@@ -102,6 +104,9 @@ class Aircraft:
 
         # Reset physical model state (position, orientation, velocity, etc.)
         self.physical_model.reset(position, orientation, speed)
+
+        self.random_dummy_counter = 0
+        self.random_dummy_type = np.random.choice(['line', 'curve'])
 
         # Set aircraft alive status and missile system state
         self.live = alive
@@ -154,6 +159,18 @@ class Aircraft:
             if self.dummy_type == "none":
                 # Live (non-dummy) aircraft controlled by PID and physics
                 self.physical_model.step(t, e, a, r, action)
+
+            elif self.dummy_type=="random":
+
+                self.physical_model.dummy_step(self.random_dummy_type, self.turn_radius, self.direction)
+                self.random_dummy_counter += 1
+
+                if self.random_dummy_counter > 300*frequency_factor:
+                    self.random_dummy_counter = 0
+                    self.random_dummy_type = np.random.choice(['line', 'curve'])
+                    self.turn_radius = np.random.choice([2500, 5000, 7500])
+                    self.direction = np.random.choice([1, -1])
+
             else:
                 # Dummy aircraft follows a scripted path (e.g., constant turn radius)
                 self.physical_model.dummy_step(self.dummy_type, self.turn_radius, self.direction)
@@ -1195,7 +1212,7 @@ class AerialBattle(MultiAgentEnv):
         kill = 'none'
 
         # === Fire only if lock is strong enough ===
-        if missile_tone > 0.5:
+        if missile_tone > 0.8:
             # === Aircraft target ===
             if missile_target != 'base':
                 target_index = self.possible_agents.index(missile_target)
@@ -1322,10 +1339,8 @@ class AerialBattle(MultiAgentEnv):
         team = aircraft.get_team()
         telemetry = aircraft.get_agent_telemetry()
         vel = telemetry['velocity'][-1]
-        prev_vel = telemetry['velocity'][-2]
         altitude = -telemetry['position'][-1][2]
-        prev_altitude = -telemetry['position'][-2][2]
-        acceleration_body = telemetry['acceleration'][-1]
+        optimal_distance = (aircraft.get_cone()[1] + aircraft.get_cone()[2])/2
         actions = telemetry['commands']
 
         Versions = {
@@ -1333,8 +1348,9 @@ class AerialBattle(MultiAgentEnv):
                 'AL': 0.5,
                 'CS': 0.5,
 
-                'P': 0.3,
-                'CR': 0.7,
+                'P': 0.1,
+                'CR': 0.9,
+                'D': 'yes',
 
                 'GFW': 0.1,
                 'PW': 0.9
@@ -1343,8 +1359,9 @@ class AerialBattle(MultiAgentEnv):
                 'AL': 0.5,
                 'CS': 0.5,
 
-                'P': 0.2,
-                'CR': 0.8,
+                'P': 0.1,
+                'CR': 0.9,
+                'D': 'no',
 
                 'GFW': 0.1,
                 'PW': 0.9
@@ -1355,20 +1372,11 @@ class AerialBattle(MultiAgentEnv):
 
                 'P': 0.1,
                 'CR': 0.9,
+                'D': 'add',
 
                 'GFW': 0.1,
                 'PW': 0.9
-            }, 
-            4: {
-                'AL': 0.5,
-                'CS': 0.5,
-
-                'P': 0.0,
-                'CR': 1.0,
-
-                'GFW': 0.1,
-                'PW': 0.9
-            }   
+            },    
         }
 
         #### Flight Related Rewards ####
@@ -1414,15 +1422,32 @@ class AerialBattle(MultiAgentEnv):
             shaped_pursuit = np.tan((adverse_angle-track_angle)*(np.pi/2.5)) / np.tan(np.pi/2.5)
             reward_Pursuit['Pursuit'] = shaped_pursuit * Versions[self.reward_version]['P']
 
-            # Closure subject to minimum distance and adverse angle tuning
-            closure_dist_norm = (1+self.get_closure_rate_norm(aircraft, closest_enemy_plane)) * (adverse_angle-track_angle)
-            reward_Pursuit['Closure'] = closure_dist_norm * Versions[self.reward_version]['CR']
+            
+            # Closure subject to minimum distance and adverse angle tuning and distance dampener
+            optimal_distance_error = abs(dist-optimal_distance)
+            distance_dampener = np.atan(np.deg2rad(optimal_distance_error/3)) / np.atan(np.deg2rad(2000))
+
+            
+            if Versions[self.reward_version]['D']=='no':
+                closure_dist_norm = (1+self.get_closure_rate_norm(aircraft, closest_enemy_plane)) * (adverse_angle-track_angle)
+                reward_Pursuit['Closure'] = closure_dist_norm * Versions[self.reward_version]['CR']
+            
+            elif Versions[self.reward_version]['D']=='yes':
+                closure_dist_norm = ((1+self.get_closure_rate_norm(aircraft, closest_enemy_plane)) * (adverse_angle-track_angle) 
+                                     * distance_dampener)
+                reward_Pursuit['Closure'] = closure_dist_norm * Versions[self.reward_version]['CR']
+            
+            else:
+                closure_dist_norm = (1+self.get_closure_rate_norm(aircraft, closest_enemy_plane)) * (adverse_angle-track_angle)
+                reward_Pursuit['Closure'] = closure_dist_norm * Versions[self.reward_version]['CR']
+
+                reward_Pursuit['Distance'] = distance_dampener * 0.3
 
 
             if missile_target != 'base':
-                Total_Reward['Attack'] = 5 * missile_tone_attack * track_angle
+                Total_Reward['Attack'] = 10 * missile_tone_attack * track_angle
                 self.attack_metric += 1
-            Total_Reward['Defence'] = -7 * missile_tone_defence * adverse_angle
+            Total_Reward['Defence'] = -15 * missile_tone_defence * adverse_angle
 
         else:
             #TODO: insert here some guidance to go towards the base and destroy it
@@ -2143,8 +2168,8 @@ def Test_env():
     # Define fixed actions per agent for evaluation
     # Format: [Up_Angle, Side_Angle, Speed, Fire], all normalized in body frame
     predefined_actions = [
-        [0.000, 0, 1, 0],
-        [0.000, 0, 1, 0],
+        [0.005, 0.1, 1, 0],
+        [0.005, 0.1, 1, 0],
         [0.000, 0, 1, 0],
         [0.000, 0, 1, 0],
         [0.000, 0, 1, 0]
@@ -2189,5 +2214,5 @@ def Test_env():
     # Clean up environment (if needed)
     env.close()
 
-#Test_env()
+Test_env()
 
