@@ -1,6 +1,6 @@
 { 'alg_config':
   {
-    'batch_size_per_learner': [1200, 1500, 1800],
+    'batch_size_per_learner': [1200],
     'gamma': [0.99],
     'train_iterations': 20000,
     'checkpoint_freq': 2000,

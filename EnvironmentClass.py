@@ -1359,17 +1359,6 @@ class AerialBattle(MultiAgentEnv):
                 'AL': 0.5,
                 'CS': 0.5,
 
-                'P': 0.3,
-                'CR': 0.7,
-                'D': 'yes',
-
-                'GFW': 0.1,
-                'PW': 0.9
-            },
-            3: {
-                'AL': 0.5,
-                'CS': 0.5,
-
                 'P': 0.1,
                 'CR': 0.9,
                 'D': 'no',
@@ -1377,17 +1366,7 @@ class AerialBattle(MultiAgentEnv):
                 'GFW': 0.1,
                 'PW': 0.9
             },
-            4: {
-                'AL': 0.5,
-                'CS': 0.5,
 
-                'P': 0.1,
-                'CR': 0.9,
-                'D': 'add',
-
-                'GFW': 0.1,
-                'PW': 0.9
-            },    
         }
 
         #### Flight Related Rewards ####
@@ -1437,28 +1416,26 @@ class AerialBattle(MultiAgentEnv):
             # Closure subject to minimum distance and adverse angle tuning and distance dampener
             optimal_distance_error = abs(dist-optimal_distance)
             distance_dampener = np.atan(np.deg2rad(optimal_distance_error/3)) / np.atan(np.deg2rad(2000))
-
+            inverse_distance_dampener = 1-distance_dampener
             
             if Versions[self.reward_version]['D']=='no':
                 closure_dist_norm = (1+self.get_closure_rate_norm(aircraft, closest_enemy_plane)) * (adverse_angle-track_angle)
                 reward_Pursuit['Closure'] = closure_dist_norm * Versions[self.reward_version]['CR']
             
             elif Versions[self.reward_version]['D']=='yes':
-                closure_dist_norm = ((1+self.get_closure_rate_norm(aircraft, closest_enemy_plane)) * (adverse_angle-track_angle) 
+                closure_dist_norm_far = ((1+self.get_closure_rate_norm(aircraft, closest_enemy_plane)) * (adverse_angle-track_angle) 
                                      * distance_dampener)
-                reward_Pursuit['Closure'] = closure_dist_norm * Versions[self.reward_version]['CR']
-            
-            else:
-                closure_dist_norm = (1+self.get_closure_rate_norm(aircraft, closest_enemy_plane)) * (adverse_angle-track_angle)
-                reward_Pursuit['Closure'] = closure_dist_norm * Versions[self.reward_version]['CR']
+                reward_Pursuit['Closure_Far'] = closure_dist_norm_far * Versions[self.reward_version]['CR']
 
-                reward_Pursuit['Distance'] = -distance_dampener * 0.3
+                abs_closure_norm = abs(self.get_closure_rate_norm(aircraft, closest_enemy_plane))
+                closure_dist_norm_near = (1-abs_closure_norm) * (adverse_angle-track_angle) * inverse_distance_dampener
+                reward_Pursuit['Closure_Near'] = closure_dist_norm_far * Versions[self.reward_version]['CR']
 
 
             if missile_target != 'base':
-                Total_Reward['Attack'] = 10 * missile_tone_attack * track_angle
+                Total_Reward['Attack'] = 15 * missile_tone_attack * track_angle
                 self.attack_metric += 1
-            Total_Reward['Defence'] = -15 * missile_tone_defence * adverse_angle
+            Total_Reward['Defence'] = -20 * missile_tone_defence * adverse_angle
 
         else:
             #TODO: insert here some guidance to go towards the base and destroy it

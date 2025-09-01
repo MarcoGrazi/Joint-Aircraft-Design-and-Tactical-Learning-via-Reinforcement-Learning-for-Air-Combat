@@ -20,8 +20,9 @@ from ray.tune.registry import register_env
 
 # === Configuration Paths ===
 Folder = 'Training_Runs'
-RunName = 'Train3_Pursuit_7'
-RunDescription = "Pursuit training run 7 against randomly manouvering dummy.\n " 
+RunName = 'Train3_Pursuit_8'
+RunDescription = "Pursuit training run 8 against randomly manouvering dummy.\n " \
+"objective: teach to maintain optimal distance from target, by matching its velocity" 
 
 ConfigFile = 'Train_Run_config.yaml'
 Base_Checkpoint = 'Train6_BestCheckpoint'
@@ -223,7 +224,7 @@ def name_creator(trial):
 algo_config = (
     SACConfig()
     .api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False)
-    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1,2,3,4])})
+    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search([1,2])})
     .training(
         train_batch_size=tune.grid_search(alg_config['batch_size_per_learner']),
         gamma=tune.grid_search(alg_config['gamma']),
