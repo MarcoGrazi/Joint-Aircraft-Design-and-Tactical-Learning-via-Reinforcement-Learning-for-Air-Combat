@@ -650,7 +650,7 @@ class AerialBattle(MultiAgentEnv):
         
 
         # === Initial airspeed between 150–200 m/s ===
-        rand_speed = np.random.choice([120, 140, 160])
+        rand_speed = np.random.choice([140, 160, 180, 200])
 
         # === Final step: apply the randomized state to the aircraft ===
         aircraft.reset(rand_pos, rand_orient, rand_speed, alive)
@@ -1340,15 +1340,15 @@ class AerialBattle(MultiAgentEnv):
         telemetry = aircraft.get_agent_telemetry()
         vel = telemetry['velocity'][-1]
         AoA = np.rad2deg(telemetry['AoA'][-1])
+        sideslip = np.rad2deg(telemetry['sideslip'][-1])
         altitude = -telemetry['position'][-1][2]
-        optimal_distance = (aircraft.get_cone()[1] + aircraft.get_cone()[2])/2
+        optimal_distance = aircraft.get_cone()[1] * 2
         actions = telemetry['commands']
 
         Versions = {
             1: {
                 'AL': 0.5,
-                'CS': 0.2,
-                'AoA': 0.3,
+                'CS': 0.5,
 
                 'P': 0.1,
                 'CR': 0.9,
@@ -1379,8 +1379,9 @@ class AerialBattle(MultiAgentEnv):
                                       (70/np.clip(abs(self.env_size[2]/2 - altitude), 7, 70)) 
                                       * Versions[self.reward_version]['CS'])
         
-        reward_Flight['AoA'] = -Versions[self.reward_version]['AoA'] * max(abs(AoA)-20, 0) 
-        reward_Flight['Stall_Velocity'] = -3 * (vel[0]<100) 
+        reward_Flight['AoA'] = -0.2 * max(abs(AoA)-20, 0) 
+        reward_Flight['sideslip'] = -0.2 * max(abs(sideslip)-20, 0) 
+        reward_Flight['Stall_Velocity'] = -0.8 * (vel[0]<100) 
         
         
         #### Pursuit related Rewards ####
@@ -1406,12 +1407,12 @@ class AerialBattle(MultiAgentEnv):
             closure_dist_norm = (1+self.get_closure_rate_norm(aircraft, closest_enemy_plane)) * (adverse_angle-track_angle)
             reward_Pursuit['Closure'] = closure_dist_norm * Versions[self.reward_version]['CR']
 
-            reward_Pursuit['Safe_Distance'] = -5 * (dist<1500)
+            reward_Pursuit['Safe_Distance'] = -2 * (dist<optimal_distance) + (adverse_angle-track_angle)
 
             if missile_target != 'base' and missile_target != 'none':
-                reward_Pursuit['Attack'] = 15 * missile_tone_attack * track_angle
+                reward_Pursuit['Attack'] = 20 * missile_tone_attack * track_angle
                 self.attack_metric += 1
-            reward_Pursuit['Defence'] = -20 * missile_tone_defence * adverse_angle
+            reward_Pursuit['Defence'] = -25 * missile_tone_defence * adverse_angle
 
         else:
             reward_Pursuit['Pursuit'] = 0

@@ -66,7 +66,7 @@ class SaveArtifactsOnCheckpoint(DefaultCallbacks):
 
             env = algorithm.env_creator({'reward_version': 1})  # Must be num_env_runners = 1
 
-            for i in range(5):  # Save 5 rollouts
+            for i in range(10):  # Save 5 rollouts
                 checkpoint_dir_i = os.path.join(checkpoint_dir, f"{i}")
                 os.makedirs(checkpoint_dir_i, exist_ok=True)
 
