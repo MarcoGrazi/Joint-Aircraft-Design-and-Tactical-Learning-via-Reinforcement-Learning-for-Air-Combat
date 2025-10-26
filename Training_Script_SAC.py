@@ -240,46 +240,40 @@ class CustomWandbCallback(DefaultCallbacks):
         trial_name = os.path.basename(algorithm._logdir)
         super().on_train_result(algorithm=algorithm, result=result, **kwargs)
 
-        # Init W&B once
+        # Initialize WandB (only once per worker)
         if not self.initialized:
             wandb.init(
                 project="aerial-battle",
                 group=f"{RunName}",
                 name=f'{RunName}/{trial_name}',
                 config=algorithm.config,
-                mode="online",
+                mode="online"
             )
-            # Define the global step metric for the run
-            wandb.define_metric("training_iteration")
-            wandb.define_metric("*", step_metric="training_iteration")
             self.initialized = True
 
-        # Use a single step for everything in this callback
-        step = int(result.get("training_iteration", algorithm.iteration))
-
-        # -------- Collect scalar metrics --------
+        # Log selected metrics
         metrics = {}
         env_metrics = result.get("env_runners", {})
         metrics["reward_mean"] = env_metrics.get("episode_reward_mean")
         metrics["reward_max"] = env_metrics.get("episode_reward_max")
         metrics["reward_min"] = env_metrics.get("episode_reward_min")
         metrics["episode_len_mean"] = env_metrics.get("episode_len_mean")
-        metrics["kills_mean"] = env_metrics.get("custom_metrics", {}).get("kills_mean", 0)
-        metrics["attack_steps_max"] = env_metrics.get("custom_metrics", {}).get("attack_steps_max", 0)
-        metrics["attack_steps_mean"] = env_metrics.get("custom_metrics", {}).get("attack_steps_mean", 0)
+        metrics["kills_mean"] = env_metrics["custom_metrics"].get("kills_mean", 0)
+        metrics["attack_steps_max"] = env_metrics["custom_metrics"].get("attack_steps_max", 0)
+        metrics["attack_steps_mean"] = env_metrics["custom_metrics"].get("attack_steps_mean", 0)
 
         learner_stats = result.get("info", {}).get("learner", {}).get("team_0", {}).get("learner_stats", {})
         for key in ["alpha_value", "actor_loss", "critic_loss", "target_entropy"]:
             if key in learner_stats:
                 metrics[key] = learner_stats[key]
 
-        # Filter NaNs/None
-        metrics = {k: float(v) for k, v in metrics.items()
-                if v is not None and not (isinstance(v, float) and math.isnan(v))}
-        
-        payload = {}
-        payload.update(metrics)
-        wandb.log(payload, step=step)
+        # Filter out NaNs or None
+        metrics = {
+            k: float(v) for k, v in metrics.items()
+            if v is not None and not (isinstance(v, float) and math.isnan(v))
+        }
+
+        wandb.log(metrics, step=result['training_iteration'])
 
     def on_train_result_SelfPlay(self, *, algorithm, result, Checkpoint_Window, Current_Pair, **kwargs):
         trial_name = os.path.basename(algorithm._logdir)
