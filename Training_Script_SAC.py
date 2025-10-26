@@ -20,11 +20,11 @@ from ray.tune.registry import register_env
 
 # === Configuration Paths ===
 Folder = 'Training_Runs'
-RunName = 'Train3_Pursuit_11'
-RunDescription = "Pursuit training run 11, loosen stall rules" 
+RunName = 'FinalTrain_Pursuit_Shaping1'
+RunDescription = "New set of trainings to refine reward, overall implementation and performance." 
 
 ConfigFile = 'Train_Run_config.yaml'
-Base_Checkpoint = 'Train8_Best'
+Base_Checkpoint = ''
 Base_Policy_restore = ['team_0']  # Policies to restore from checkpoint
 
 # Path where training data and checkpoints will be stored
@@ -32,7 +32,7 @@ storage_path = os.path.join("/home/lsp/Desktop/ThesisCode", Folder)
 
 # Set your WandB API key for logging
 os.environ["WANDB_API_KEY"] = "1b8b77cc6fc3631890702b9ecbfed2fdc1551347"
-
+wandb.login(key="YOUR_WANDB_API_KEY")
 
 #Create RunName directory inside Folder, with RunDescription inside it
 # === Create Directory and Save Description ===
