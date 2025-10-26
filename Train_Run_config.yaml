@@ -2,7 +2,7 @@
   {
     'batch_size_per_learner': [1200],
     'gamma': [0.99],
-    'train_iterations': 20000,
+    'train_iterations': 10000,
     'checkpoint_freq': 1000,
     'checkpoint_length': 3000, #3000/10 = 300/60 = 5 minutes
 },
@@ -10,38 +10,191 @@
     {
       'rho' : 1.239,
       'g' : 9.81,
-      'physics_frequency':120,
-      'action_frequency':10,
+      'physics_frequency': 120,
+      'action_frequency': 10,
       'max_episode_length': 6000, #6000/10 = 600/60 = 10 minutes
       'team_number': 2,
       'agent_number_team': 3,
       'agent_report_name': 'none',
-      'missile_speed':600,
-      'missile_max_acceleration': 10,
-      'stepwise_tone_increment':0.01,
+      'plane_model': [0, 0],  # Select UAV model for each team (1, 2, or 3)
+      'stepwise_tone_increment':0.1,
+      'tone_threshold':0.5,
+      'autotrigger': True,
+      'trigger_threshold': 0,
       'min_bases_distance': 10000,
       'env_size':[15000, 15000, 10000],
       'max_size': 30000,
-      'attack_vulnerability_cone': [90, 1000, 5000],
-      'base_vulnerability_distance': 1500,
+      'attack_cone': [120, 1000, 5000],
+      'vulnerability_cone': [120, 1000, 5000],
       'collision_distance': 30,
-      'dummy': 'random', # 'line', 'curve', 'none', 'mixed', 'random'
+      'dummy': 'line', # 'line', 'curve', 'none', 'mixed', 'random'
       'dummy_turn_radius':5000,
       'dummy_direction':1,
+      'dummy_kill': False,
       'alive_agents_start': 1,
       'speed_step': 0.01,
       'UpAngle_step': 0.001,
       'SideAngle_step': 0.001,
       'screen_size' : [800, 800],
-      'spawning_distance': 4000,
-      'spawning_orientations': [[0], [0, 90, -90, 180]] 
+      'spawning_distance': 3250,
+      'spawning_orientations': [[0, -10, 10], [0, 90, -90, 180]],
+      'spawning_speeds': [140, 160, 180],
+      'reward_versions': {
+            1: {
+                'GFW': 0.3,   # Flight Reward Weight
+                'PW': 0.7,    # Pursuit Reward Weight
+                'CW': 0.7,
+                'PW': 0.3,
+                'AoA_W': 0.0,
+                'Sideslip_W': 0.0,
+                'Speed_W': 0.5,
+                'Altitude_W': 0.5,
+                'Critical_AoA': 30,
+                'Terminal_AoA': 60,
+                'Critical_Sideslip': 30,
+                'Terminal_Sideslip': 60,
+                'Critical_Speed': 150.0,
+                'Terminal_Speed': 80.0,
+                'Critical_Altitude': 3500.0,
+                'optimal_zone_width': 1000,
+                'att_tone_bonus': 10.0,
+                'def_tone_bonus': 2,
+                'Trigger_Penalty': 0.3,
+                'kill_bonus': 1000,
+                'terminal_penalty': 500,
+                'mode': 'LINEAR',
+            },
+            2: {
+                'GFW': 0.3,   # Flight Reward Weight
+                'PW': 0.7,    # Pursuit Reward Weight
+                'CW': 0.7,
+                'PW': 0.3,
+                'AoA_W': 0.0,
+                'Sideslip_W': 0.0,
+                'Speed_W': 0.5,
+                'Altitude_W': 0.5,
+                'Critical_AoA': 30,
+                'Terminal_AoA': 60,
+                'Critical_Sideslip': 30,
+                'Terminal_Sideslip': 60,
+                'Critical_Speed': 150.0,
+                'Terminal_Speed': 80.0,
+                'Critical_Altitude': 3500.0,
+                'optimal_zone_width': 1000,
+                'att_tone_bonus': 10.0,
+                'def_tone_bonus': 2,
+                'Trigger_Penalty': 0.3,
+                'kill_bonus': 1000,
+                'terminal_penalty': 500,
+                'mode': 'TANGENT',
+            },
+            3: {
+                'GFW': 0.3,   # Flight Reward Weight
+                'PW': 0.7,    # Pursuit Reward Weight
+                'CW': 0.7,
+                'PW': 0.3,
+                'AoA_W': 0.5,
+                'Sideslip_W': 0.0,
+                'Speed_W': 0.0,
+                'Altitude_W': 0.5,
+                'Critical_AoA': 30,
+                'Terminal_AoA': 60,
+                'Critical_Sideslip': 30,
+                'Terminal_Sideslip': 60,
+                'Critical_Speed': 150.0,
+                'Terminal_Speed': 80.0,
+                'Critical_Altitude': 3500.0,
+                'optimal_zone_width': 1000,
+                'att_tone_bonus': 10.0,
+                'def_tone_bonus': 2,
+                'Trigger_Penalty': 0.3,
+                'kill_bonus': 1000,
+                'terminal_penalty': 500,
+                'mode': 'TANGENT',
+            },
+            4: {
+                'GFW': 0.3,   # Flight Reward Weight
+                'PW': 0.7,    # Pursuit Reward Weight
+                'CW': 0.7,
+                'PW': 0.3,
+                'AoA_W': 1.0,
+                'Sideslip_W': 0.0,
+                'Speed_W': 0.0,
+                'Altitude_W': 0.0,
+                'Critical_AoA': 30,
+                'Terminal_AoA': 60,
+                'Critical_Sideslip': 30,
+                'Terminal_Sideslip': 60,
+                'Critical_Speed': 150.0,
+                'Terminal_Speed': 80.0,
+                'Critical_Altitude': 3500.0,
+                'optimal_zone_width': 1000,
+                'att_tone_bonus': 10.0,
+                'def_tone_bonus': 2,
+                'Trigger_Penalty': 0.3,
+                'kill_bonus': 1000,
+                'terminal_penalty': 500,
+                'mode': 'TANGENT',
+            },
+            5: {
+                'GFW': 0.3,   # Flight Reward Weight
+                'PW': 0.7,    # Pursuit Reward Weight
+                'CW': 0.7,
+                'PW': 0.3,
+                'AoA_W': 0.0,
+                'Sideslip_W': 0.0,
+                'Speed_W': 1.0,
+                'Altitude_W': 0.0,
+                'Critical_AoA': 30,
+                'Terminal_AoA': 60,
+                'Critical_Sideslip': 30,
+                'Terminal_Sideslip': 60,
+                'Critical_Speed': 150.0,
+                'Terminal_Speed': 80.0,
+                'Critical_Altitude': 3500.0,
+                'optimal_zone_width': 1000,
+                'att_tone_bonus': 10.0,
+                'def_tone_bonus': 2,
+                'Trigger_Penalty': 0.3,
+                'kill_bonus': 1000,
+                'terminal_penalty': 500,
+                'mode': 'TANGENT',
+            },
+            6: {
+                'GFW': 0.3,   # Flight Reward Weight
+                'PW': 0.7,    # Pursuit Reward Weight
+                'CW': 0.7,
+                'PW': 0.3,
+                'AoA_W': 0.25,
+                'Sideslip_W': 0.25,
+                'Speed_W': 0.25,
+                'Altitude_W': 0.25,
+                'Critical_AoA': 30,
+                'Terminal_AoA': 60,
+                'Critical_Sideslip': 30,
+                'Terminal_Sideslip': 60,
+                'Critical_Speed': 150.0,
+                'Terminal_Speed': 80.0,
+                'Critical_Altitude': 3500.0,
+                'optimal_zone_width': 1000,
+                'att_tone_bonus': 10.0,
+                'def_tone_bonus': 2,
+                'Trigger_Penalty': 0.3,
+                'kill_bonus': 1000,
+                'terminal_penalty': 500,
+                'mode': 'TANGENT',
+            },
+        }
     },
 
   'uav_config' :
-    {
-       'mass': 3000,
+    {0:  # UAV Model 0
+       {
+       'mass': 4000,
        'max_speed':343, #speed of sound (after this the aero model is not realistic anymore)
        'max_acc': 20,
+       'attack_cone': [120, 1000, 5000],
+       'defence_cone': [120, 1000, 5000],
        'bounding_box': [9413, 8017, 1446],
        'inertia_tensor':
          [ [6.817e3, 0, 0 ],
@@ -64,7 +217,7 @@
                          'drag':[0.0000164511278, 0, 0.0208105263158],
                },
              },
-           'COF' : [-0.2, 0, 0],
+           'COF' : [-0.3, 0, 0],
            'surface': 88.58,
        },
 
@@ -84,7 +237,7 @@
            'drag': [0.0002803707, 0.0002215203, 0.01],
          },
          'COF': [-3.65,0,0],
-         'surface':  10,
+         'surface':  6,
        },
 
        'rudders': {
@@ -93,9 +246,99 @@
            'drag': [-0.0001966466, 0, 0.01],
          },
          'COF': [ -3, 0, 0 ],
-         'surface': 10,
-       },
+         'surface': 4,
+        },
 
        'max_thrust': 80000,
+       "gains": {
+          "AoA": {"kp": 1.2, "ki": 0.5, "kd": 0.4},  #1.2, 0.5, 0.4
+          "sideslip": {"kp": 5, "ki": 0, "kd": 1}, #2, 0, 1
+          "roll": {"kp": 3, "ki": 0, "kd": 1.2}, # 1, 0, 0.5
+          "speed": {"kp": 25, "ki": 0, "kd": 0},
+        },
+        'rate_limits': {
+          'elevator': 20,
+          'aileron': 20,
+          'rudder': 20,
+          'throttle': 20,
+        }
+  },
+
+  1: {
+      'mass': 0,
+       'max_speed':343, #speed of sound (after this the aero model is not realistic anymore)
+       'max_acc': 20,
+       'attack_cone': [120, 1000, 5000],
+       'defence_cone': [120, 1000, 5000],
+       'bounding_box': [0,0,0],
+       'inertia_tensor':
+         [ [0, 0, 0 ],
+           [0, 0, 0],
+           [0, 0, 0]],
+         #[[0,0, 0],
+         # [0,0,0],
+         # [0,0,0]],
+
+       'airframe':
+         {
+           'coefficients':
+             {
+               'front' : {
+                           'lift': [0, 0, 0, 0],
+                           'drag': [0, 0, 0],
+               },
+               'side': {
+                         'lateral':[0, 0, 0, 0],
+                         'drag':[0, 0, 0],
+               },
+             },
+           'COF' : [0, 0, 0],
+           'surface': 0,
+       },
+
+       'aleiron':
+         {
+           'coefficients': {
+             'lift': [ 0, 0, 0, 0, 0],
+             'drag': [ 0, 0, 0, 0],
+           },
+           'COF': [ 0, 0, 0 ],
+           'surface': 0,
+         },
+
+       'elevons': {
+         'coefficients': {
+           'lift': [0, 0, 0, 0],
+           'drag': [0, 0, 0],
+         },
+         'COF': [0,0,0],
+         'surface':  0,
+       },
+
+       'rudders': {
+         'coefficients': {
+           'lateral': [0, 0, 0, 0],
+           'drag': [0, 0, 0],
+         },
+         'COF': [ 0, 0, 0 ],
+         'surface': 0,
+       },
+
+       'max_thrust': 0,
+
+       "gains": {
+          "AoA": {"kp": 5, "ki": 3, "kd": 1},
+          "sideslip": {"kp": 8, "ki": 2, "kd": 1.8},
+          "roll": {"kp": 10, "ki": 0.2, "kd": 2},
+          "speed": {"kp": 80, "ki": 0.8, "kd": 0.0},
+        },
+        'rate_limits': {
+          'elevator': 5.0,
+          'aileron': 5.0,
+          'rudder': 10.0,
+          'throttle': 0.8,
+        }
+  }
+  
   }
 }

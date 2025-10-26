@@ -19,7 +19,7 @@ import gymnasium as gym
 
 
 class Aircraft:
-    def __init__(self, UAV_config, rho, g, frequency, team_id, cone):
+    def __init__(self, UAV_config, rho, g, frequency, team_id):
         # Initialize the aircraft's physical flight model
         self.physical_model = FixedWingAircraft(UAV_config, rho, g, frequency)
 
@@ -33,11 +33,13 @@ class Aircraft:
         self.team = team_id                         # Team affiliation
 
         # PID control gains for basic flight controls
-        self.gains = {
-            'AoA':      {'kp': 5, 'ki': 0.1, 'kd': 0.8},   # Angle of Attack control
-            'sideslip': {'kp': 5, 'ki': 0.1, 'kd': 1.2},   # Lateral balance / sideslip
-            'roll':     {'kp': 5, 'ki': 0.1, 'kd': 1.0},   # Roll angle control
-            'speed':    {'kp': 80, 'ki': 0.8, 'kd': 0.0}   # Throttle/speed regulation
+        self.gains = UAV_config['gains']
+        self.rate_limits = UAV_config['rate_limits']
+        self.last_cmd = {
+            'elevator': 0.0,
+            'aileron' : 0.0,
+            'rudder'  : 0.0,
+            'throttle': 0.0,
         }
 
         # Stores the history of key flight data for analysis or plotting
@@ -60,7 +62,8 @@ class Aircraft:
         self.dt = 1.0 / frequency                    # Simulation time step duration (s)
 
         # Engagement parameters
-        self.attack_vulnerability_cone = cone       # (angle_deg, min_dist, max_dist)
+        self.attack_cone = UAV_config['attack_cone']       # (angle_deg, min_dist, max_dist)
+        self.defence_cone = UAV_config['defence_cone']
 
         # Dummy/AI mode attributes (used in scripted dummy behavior)
         self.dummy_type = "none"                    # "none" or dummy behavior name
@@ -149,7 +152,8 @@ class Aircraft:
         for i in range(frequency_factor):
             # --- Translate velocity vector in body frame to desired flight angles and speed ---
             # Expected: AoA (angle of attack), sideslip angle, roll angle, and speed (magnitude)
-            AoA, sideslip, roll, throttle = self.Action_Translation_Layer(action[:-1], (i/frequency_factor))
+            current_AoA_rad = self.physical_model.getTelemetry()['AoA'][-1]
+            AoA, sideslip, roll, throttle = self.Action_Translation_Layer(action[:-1], (i/frequency_factor), current_AoA_rad)
 
             # --- Compute actuator inputs using PID control for each controlled dimension ---
             # Returns control surface commands: throttle, elevon, aileron, rudder
@@ -180,7 +184,7 @@ class Aircraft:
             # Store latest physical telemetry (e.g., position, velocity, orientation, etc.)
             self.agent_telemetry[key].append(self.physical_model.getTelemetry()[key][-1])
 
-    def Action_Translation_Layer(self, action, manouvre_progress):
+    def Action_Translation_Layer(self, action, manouvre_progress, current_AoA_rad):
         """
         Translates a high-level action (target velocity vector in body frame)
         into AoA, roll, and speed setpoints. All outputs are normalized in [-1, 1].
@@ -214,7 +218,7 @@ class Aircraft:
 
         # === 3. Mode switch: use direct angles for large requests ===
         # If either angular offset is large (> ~5°), use direct up/side as AoA/sideslip
-        if v_up < 0 and abs(v_side) < (np.pi/10):
+        if v_up < 0 and abs(v_side) < np.deg2rad(5):
             # Direct control mode (use the agent's angles directly)
             AoA_rad = v_up
             sideslip_rad = v_side
@@ -232,14 +236,37 @@ class Aircraft:
             roll_rad = np.arctan2(vy, vz)  # (signs assumed to match your control system)
 
             # output only roll command in the early phase of the manouvre, to prevent PID instability
-            if manouvre_progress < 0.3:
-                AoA_rad = 0
+            if manouvre_progress < 0.6 and AoA_rad > np.deg2rad(10):
+                AoA_rad = np.clip(current_AoA_rad * 1.025, -AoA_rad, AoA_rad)
 
         # === 4. Normalize all outputs to [-1, 1] (compatible with PID_Control scaling)===
-        AoA_norm = AoA_rad / (np.pi/6)          # range: [-1, 1] corresponds to ±30°
-        sideslip_norm = sideslip_rad / (np.pi/10)
+        AoA_norm = AoA_rad / (np.deg2rad(40))          # range: [-1, 1] corresponds to ±40°
+        sideslip_norm = sideslip_rad / (np.deg2rad(40))  # range: [-1, 1] corresponds to ±40°
         roll_norm = roll_rad / np.pi        # range: [-1, 1] corresponds to ±180°
+
         return [AoA_norm, sideslip_norm, roll_norm, v_speed]
+    
+    def rate_limit(self, name, cmd, dt):
+        """
+        Per-actuator slew-rate limiter.
+        name: 'elevator' | 'aileron' | 'rudder' | 'throttle'
+        cmd : desired normalized command after clipping
+        dt  : seconds
+        """
+        rl = self.rate_limits[name]
+        if rl <= 0 or dt <= 0:
+            self.last_cmd[name] = cmd
+            return cmd
+
+        prev = self.last_cmd[name]
+        max_step = rl * dt
+        delta = cmd - prev
+
+        if   delta >  max_step: cmd = prev + max_step
+        elif delta < -max_step: cmd = prev - max_step
+
+        self.last_cmd[name] = cmd
+        return cmd
 
     def PID_Control(self, action):
         """
@@ -261,8 +288,8 @@ class Aircraft:
         target_speed = np.clip(target_speed, 0.4, 1)  # Avoid stall speeds
 
         # Scale normalized values to physical units:
-        target_AoA *= 30               # Angle of attack in degrees
-        target_sideslip *= 5         # Sideslip stays in small angle range
+        target_AoA *= 40               # Angle of attack in degrees
+        target_sideslip *= 40         # Sideslip stays in small angle range
         target_roll *= 180            # Roll target in degrees
         target_speed *= 343           # Convert normalized speed to m/s (approx speed of sound)
 
@@ -304,7 +331,20 @@ class Aircraft:
             'throttle': np.clip(outputs['speed'] / 343, 0.0, 1.0)
         }
 
+        # Apply per-surface rate limits
+        commands['elevator'] = self.rate_limit('elevator', commands['elevator'], self.dt)
+        commands['aileron']  = self.rate_limit('aileron',  commands['aileron'],  self.dt)
+        commands['rudder']   = self.rate_limit('rudder',   commands['rudder'],   self.dt)
+        commands['throttle'] = self.rate_limit('throttle', commands['throttle'], self.dt)
+
+        # (Optional safety) clip again in case numerical drift occurred
+        commands['elevator'] = float(np.clip(commands['elevator'], -1.0, 1.0))
+        commands['aileron']  = float(np.clip(commands['aileron'],  -1.0, 1.0))
+        commands['rudder']   = float(np.clip(commands['rudder'],   -1.0, 1.0))
+        commands['throttle'] = float(np.clip(commands['throttle'],  0.0, 1.0))
+
         return commands['throttle'], commands['elevator'], commands['aileron'], commands['rudder']
+
 
     def get_max_acc(self):
             """
@@ -355,12 +395,12 @@ class Aircraft:
         """
         return self.missile_tone_defence
 
-    def get_cone(self):
+    def get_cones(self):
         """
         Returns the attack/vulnerability cone parameters:
         [cone_angle_deg, min_dist, max_dist]
         """
-        return self.attack_vulnerability_cone
+        return self.attack_cone, self.defence_cone
 
     def get_pos(self):
         """
@@ -485,13 +525,14 @@ class AerialBattle(MultiAgentEnv):
         self.frequency_factor = self.physics_frequency // self.action_frequency
         self.g = env_config['g']
         self.reward_version = reward_version
+        self.Reward_Config = env_config['reward_versions'][reward_version]
 
         # === Missile and Combat Configs ===
-        self.missile_speed = env_config["missile_speed"]
-        self.max_acc_missile = env_config["missile_max_acceleration"]
         self.stepwise_tone_increment = env_config['stepwise_tone_increment']
+        self.tone_threshold = env_config['tone_threshold']
+        self.autotrigger = env_config['autotrigger']
+        self.trigger_threshold = env_config['trigger_threshold']
         self.collision_distance = env_config["collision_distance"]
-        self.bases_vulnerability_distance = env_config["base_vulnerability_distance"]
 
         # === World and Agent Configuration ===
         self.env_size = env_config["env_size"]
@@ -500,7 +541,6 @@ class AerialBattle(MultiAgentEnv):
         self.num_teams = env_config['team_number']
         self.num_agents_team = env_config["agent_number_team"]
         self.alive_agents_start = env_config['alive_agents_start']
-        self.uav_mass = UAV_config['mass']
         self.discretize = discretize
 
         # === Control Resolution Parameters (for discretized or fine-grained action mapping) ===
@@ -512,6 +552,7 @@ class AerialBattle(MultiAgentEnv):
         self.dummy = env_config["dummy"]
         self.turn_radius = env_config["dummy_turn_radius"]
         self.direction = env_config["dummy_direction"]
+        self.dummy_kill = env_config['dummy_kill']
 
         # === Tracking + Stats ===
         self.agent_report = env_config["agent_report_name"]
@@ -528,6 +569,7 @@ class AerialBattle(MultiAgentEnv):
         self.bases = []
         self.spawning_distance = env_config['spawning_distance']
         self.spawning_orientations = env_config['spawning_orientations']
+        self.spawning_speeds = env_config['spawning_speeds']
 
         for i in range(self.num_teams):
             for j in range(self.num_agents_team):
@@ -537,12 +579,11 @@ class AerialBattle(MultiAgentEnv):
                 # === Instantiate Aircraft ===
                 self.Aircrafts.append(
                     Aircraft(
-                        UAV_config,
+                        UAV_config[env_config['plane_model'][i]],
                         env_config['rho'],
                         env_config['g'],
                         env_config['physics_frequency'],
                         i,  # team index
-                        env_config['attack_vulnerability_cone']
                     )
                 )
 
@@ -561,6 +602,7 @@ class AerialBattle(MultiAgentEnv):
                 )
 
         self.agents = self.possible_agents.copy()  # Initialize agents for current episode
+
 
     def get_observation_space(self, team_id):
         """
@@ -1049,13 +1091,12 @@ class AerialBattle(MultiAgentEnv):
         new_missile_tone_defence = self.Aircrafts[agent_index].get_missile_tone_defence()
 
         # Get attacker's cone and state
-        attack_cone = self.Aircrafts[agent_index].get_cone()
+        attack_cone, _ = self.Aircrafts[agent_index].get_cones()
         attack_pos = self.Aircrafts[agent_index].get_pos()
         attack_vel = self.Aircrafts[agent_index].get_absolute_vel()
         team = self.Aircrafts[agent_index].get_team()
 
         possible_targets = []   # enemy aircraft that intersect our cone
-        base_target = -1        # index of an enemy base that is within vulnerability and in cone
         max_defence_tone = 0    # max tone this agent receives from enemies
 
         # Only perform tone updates if not already locked defensively
@@ -1063,7 +1104,7 @@ class AerialBattle(MultiAgentEnv):
             for i, aircraft in enumerate(self.Aircrafts):
                 if i != agent_index and aircraft.is_alive() and aircraft.get_team() != team:
                     # Check mutual intersection of cones
-                    defence_cone = aircraft.get_cone()
+                    _, defence_cone = aircraft.get_cones()
                     defence_pos = aircraft.get_pos()
                     defence_vel = aircraft.get_absolute_vel()
 
@@ -1082,29 +1123,6 @@ class AerialBattle(MultiAgentEnv):
                     defence_tone, _ = aircraft.get_missile_tone_attack()
                     if intersected and defence_tone > max_defence_tone:
                         max_defence_tone = defence_tone
-
-            # Check base targeting conditions
-            for i, base in enumerate(self.bases):
-                if i != team:
-                    attack_angle, attack_min_dist, attack_max_dist = attack_cone
-                    is_in_cone = self.is_within_cone(attack_pos, attack_vel, base,
-                                                    attack_angle, attack_min_dist, attack_max_dist)
-
-                    dist = np.linalg.norm(self.relative_pos(agent_index, i, 'base'))
-                    is_in_vuln = dist < self.bases_vulnerability_distance
-
-                    if is_in_cone and is_in_vuln:
-                        base_target = i
-
-        # === Decision logic: who to lock on ===
-
-        if base_target != -1:
-            # If we're aiming at a base
-            if new_missile_target == "base":
-                new_missile_tone_attack += self.stepwise_tone_increment
-            elif new_missile_target == "none":
-                new_missile_target = "base"
-                new_missile_tone_attack = self.stepwise_tone_increment
 
         elif len(possible_targets) > 0:
             # If we're aiming at an aircraft
@@ -1212,7 +1230,7 @@ class AerialBattle(MultiAgentEnv):
         kill = 'none'
 
         # === Fire only if lock is strong enough ===
-        if missile_tone > 0.5:
+        if missile_tone > self.tone_threshold:
             # === Aircraft target ===
             if missile_target != 'base':
                 target_index = self.possible_agents.index(missile_target)
@@ -1266,15 +1284,13 @@ class AerialBattle(MultiAgentEnv):
         if type == 'aircraft':
             # === Estimate intercept time ===
             distance = np.linalg.norm(self.relative_pos(defender, attacker, 'aircraft'))
-            T_intercept = distance / self.missile_speed
+            attack_cone, _ = attacker.get_cones()
+            _, defence_cone = defender.get_cones()
+            track_angle, adverse_angle = self.get_track_adverse_angles_norm(attacker, defender)
 
-            # === Use ratio of missile acceleration to target maneuverability ===
-            max_am = self.max_acc_missile
-            max_aa = self.Aircrafts[defender].get_max_acc()
-
-            # Kill probability heuristic
-            maneuver_ratio = np.clip(max_am / max_aa, 0.1, 2.0)
-            bernoulli_threshold = 0.2 + 0.8 * (tone * (1 / (1 + T_intercept)) * maneuver_ratio)
+            att_angle_margin = (np.deg2rad(attack_cone[0]/2)-(np.pi*track_angle)) / np.deg2rad(attack_cone[0]/2)
+            def_angle_margin = (adverse_angle*np.pi)-(np.deg2rad(defence_cone[0]/2)) / np.deg2rad(defence_cone[0]/2)
+            bernoulli_threshold = att_angle_margin * def_angle_margin * tone
 
         elif type == 'base':
             # Simpler model for static base: probability proportional to tone
@@ -1286,7 +1302,6 @@ class AerialBattle(MultiAgentEnv):
             is_hit = True
 
         return is_hit
-
 
     def get_track_adverse_angles_norm(self, aircraft, target_aircraft):
         agent_pos = np.array(aircraft.get_agent_telemetry()['position'][-1])
@@ -1328,12 +1343,12 @@ class AerialBattle(MultiAgentEnv):
         #normalization based on arctangent function 
         return np.atan(np.deg2rad(closure)) / np.atan(np.deg2rad(686))
 
-
     def get_individual_reward(self, agent_index, action, kill, missile_tone_attack, missile_tone_defence, missile_target):
         terminated = False
         truncated = False
         reward_Flight = {}
         reward_Pursuit = {}
+        sparse_reward = {}
         Total_Reward = {}
         aircraft = self.Aircrafts[agent_index]
         team = aircraft.get_team()
@@ -1342,52 +1357,41 @@ class AerialBattle(MultiAgentEnv):
         AoA = np.rad2deg(telemetry['AoA'][-1])
         sideslip = np.rad2deg(telemetry['sideslip'][-1])
         altitude = -telemetry['position'][-1][2]
-        optimal_distance = aircraft.get_cone()[1] * 2
-        actions = telemetry['commands']
-
-        Versions = {
-            1: {
-                'AL': 0.5,
-                'CS': 0.5,
-
-                'P': 0.1,
-                'CR': 0.9,
-
-                'GFW': 0.1,
-                'PW': 0.9
-            },
-
-        }
-
-        #### Flight Related Rewards ####
-        a_A = 15
-        mid_A = 0.25
-        abs_alt = abs(self.env_size[2]/2 - altitude) / (self.env_size[2]/2)
-        reward_Flight['Altitude'] = -((1/(1 + np.exp(-a_A * (abs_alt - mid_A)))) * 
-                                      Versions[self.reward_version]['AL'])
-        reward_Flight['Altitude'] += ((abs(self.env_size[2]/2 - altitude) < 1000) *
-                                      (1000/np.clip(abs(self.env_size[2]/2 - altitude), 100, 1000)) 
-                                      * Versions[self.reward_version]['AL'])
+        att_cone, _ = aircraft.get_cones()
+        optimal_distance = (att_cone[1] + att_cone[2])/2
+        [pre_UpAngle_C, pre_SideAngle_C, pre_Speed_C, pre_trigger] = telemetry['commands'][-2]
+        [UpAngle_C, SideAngle_C, Speed_C, trigger] = action
         
+        reward_config = self.Reward_Config
         
-        a_S = 15
-        mid_S = 0.2
-        abs_speed = abs(280-vel[0]) / 200
-        reward_Flight['Cruise Speed'] = -((1/(1 + np.exp(-a_S * (abs_speed - mid_S)))) * 
-                                          Versions[self.reward_version]['CS'])
-        reward_Flight['Cruise Speed'] = ((abs(280-vel[0]) < 70) *
-                                      (70/np.clip(abs(self.env_size[2]/2 - altitude), 7, 70)) 
-                                      * Versions[self.reward_version]['CS'])
-        
-        reward_Flight['AoA'] = -0.2 * max(abs(AoA)-20, 0) 
-        reward_Flight['sideslip'] = -0.2 * max(abs(sideslip)-20, 0) 
-        reward_Flight['Stall_Velocity'] = -0.8 * (vel[0]<100) 
-        
-        
+        #### Flight related Rewards ####
+        # AoA Penalty
+        AoA_Norm = abs(AoA) / reward_config['Terminal_AoA']
+        AoA_MID = reward_config['Critical_AoA'] / reward_config['Terminal_AoA']
+        AoA_ALPHA = 12
+        reward_Flight['AoA'] = - reward_config['AoA_W'] * (1 / (1 + np.exp(-AoA_ALPHA * (AoA_Norm - AoA_MID))))
+
+        SS_Norm = abs(sideslip) / reward_config['Terminal_Sideslip']
+        SS_MID = reward_config['Critical_Sideslip'] / reward_config['Terminal_Sideslip']
+        SS_ALPHA = 12
+        reward_Flight['Sideslip'] = - reward_config['Sideslip_W'] * (1 / (1 + np.exp(-SS_ALPHA * (SS_Norm - SS_MID))))
+
+        # Speed Penalty
+        speed = vel[0]
+        Speed_Filtered_Norm = max(reward_config['Critical_Speed'] - speed, 0) / (reward_config['Critical_Speed'] - reward_config['Terminal_Speed'])
+        Speed_MID = 0.5
+        Speed_ALPHA = 12
+        reward_Flight['Speed'] = - reward_config['Speed_W'] * (1 / (1 + np.exp(-Speed_ALPHA * (Speed_Filtered_Norm - Speed_MID))))
+
+        # Altitude Penalty
+        Altitude_Norm = abs(self.env_size[2]/2 - altitude) / (self.env_size[2]/2)
+        Altitude_MID = reward_config['Critical_Altitude'] / (self.env_size[2]/2)
+        Altitude_ALPHA = 12
+        reward_Flight['Altitude'] = - reward_config['Altitude_W'] * (1 / (1 + np.exp(-Altitude_ALPHA * (Altitude_Norm - Altitude_MID))))
+
         #### Pursuit related Rewards ####
         # Choose Enemy Plane
         closest_enemy_plane = None
-        c = 0
         dist = 1000000
         for i, enemy_aircraft in enumerate(self.Aircrafts):
             if enemy_aircraft.get_team() != team and enemy_aircraft.is_alive():
@@ -1399,56 +1403,65 @@ class AerialBattle(MultiAgentEnv):
 
         if closest_enemy_plane is not None:
             track_angle, adverse_angle = self.get_track_adverse_angles_norm(aircraft, closest_enemy_plane)
+            closure = self.get_closure_rate_norm(aircraft, closest_enemy_plane)
+            optimal_zone_width = reward_config['optimal_zone_width']
 
-            # Pursuit_angle
-            shaped_pursuit = np.tan((adverse_angle-track_angle)*(np.pi/2.5)) / np.tan(np.pi/2.5)
-            reward_Pursuit['Pursuit'] = shaped_pursuit * Versions[self.reward_version]['P']
+            Angle_advantage = (abs(adverse_angle)-abs(track_angle))
 
-            closure_dist_norm = (1+self.get_closure_rate_norm(aircraft, closest_enemy_plane)) * (adverse_angle-track_angle)
-            reward_Pursuit['Closure'] = closure_dist_norm * Versions[self.reward_version]['CR']
+            Closure_Mix = (closure * (1-track_angle))
 
-            reward_Pursuit['Safe_Distance'] = -2 * (dist<optimal_distance) + (adverse_angle-track_angle)
+            if reward_config['mode'] == 'LINEAR':
+                reward_Pursuit['Pursuit'] = reward_config['PW'] * Angle_advantage
+                reward_Pursuit['Closure'] = reward_config['CW'] * Closure_Mix
 
-            if missile_target != 'base' and missile_target != 'none':
-                reward_Pursuit['Attack'] = 20 * missile_tone_attack * track_angle
+            elif reward_config['mode'] == 'TANGENT':
+                reward_Pursuit['Pursuit'] = reward_config['PW'] * np.tan(1.2 * Angle_advantage) / np.tan(1.2)
+                reward_Pursuit['Closure'] = reward_config['CW'] * np.tan(1.2 * Closure_Mix) / np.tan(1.2)
+
+            #Sparse Pursuit Rewards:
+            sparse_reward['Attack_Tone'] = reward_config['att_tone_bonus'] * missile_tone_attack * abs(adverse_angle)
+            if missile_target != 'none':
                 self.attack_metric += 1
-            reward_Pursuit['Defence'] = -25 * missile_tone_defence * adverse_angle
+            sparse_reward['Defence_Tone'] = - reward_config['def_tone_bonus'] * missile_tone_defence * abs(track_angle)
+
+            sparse_reward['Trigger'] = - reward_config['Trigger_Penalty'] * (max(missile_tone_attack-self.tone_threshold, 0) + 0.5) * (trigger-self.trigger_threshold)
 
         else:
             reward_Pursuit['Pursuit'] = 0
             reward_Pursuit['Closure'] = 0
+            sparse_reward['Attack_Tone'] = 0
+            sparse_reward['Defence_Tone'] = 0
         
-        #Sparse Pursuit Rewards:
         if kill != 'none':
-            reward_Pursuit['Kill'] = 2000
+            sparse_reward['Kill'] = reward_config['kill_bonus']
             self.kill_metric += 1
-
-        #### Termination Condition Rewards ####
-        acc=0
-        if len(telemetry['acceleration']) > 5:
-            acc = np.linalg.norm(np.mean(telemetry['acceleration'][-5: -1]))
 
         #check collision or over-g
         if (self.check_collision(agent_index) 
-            or acc >= (20*9.81) 
-            or vel[0]<50 
+            or vel[0] < reward_config['Terminal_Speed']
+            or abs(AoA) > reward_config['Terminal_AoA'] 
+            or abs(sideslip) > reward_config['Terminal_Sideslip']
             or altitude>self.env_size[2]
             or aircraft.get_distance_from_centroid(self.bases) > self.max_size):
             self.Aircrafts[agent_index].kill()
             terminated = True
-            reward_Flight['Termination'] = -1000
+            sparse_reward['Termination'] = - reward_config['terminal_penalty']
         
 
         #### Reward Merge ####
+        normalized_reward_Pursuit = sum(reward_Pursuit.values())  
+        normalized_reward_Flight = sum(reward_Flight.values())
+        sparse_reward_sum = sum(sparse_reward.values())
+
+        normalized_total_reward = (reward_config['GFW'] * normalized_reward_Flight +
+                                    reward_config['PW'] * normalized_reward_Pursuit) + sparse_reward_sum
+
         Total_Reward.update(reward_Flight)
         Total_Reward.update(reward_Pursuit)
-        normalized_reward_Pursuit = sum(reward_Pursuit.values())
-        normalized_reward_Flight = sum(reward_Flight.values())
-
-        normalized_total_reward = (Versions[self.reward_version]['GFW'] * normalized_reward_Flight +
-                                    Versions[self.reward_version]['PW'] * normalized_reward_Pursuit)
-
-
+        Total_Reward['Attack_Tone'] = sparse_reward['Attack_Tone']
+        Total_Reward['Defence_Tone'] = sparse_reward['Defence_Tone']
+        
+        #print(normalized_total_reward)
         self.episode_rewards[self.possible_agents[agent_index]].append(Total_Reward.copy())
         return normalized_total_reward, terminated, truncated
 
@@ -1531,7 +1544,6 @@ class AerialBattle(MultiAgentEnv):
             if self.Aircrafts[agent_index].is_alive():
                 # === Process action ===
                 action = self.discretizer(a) if self.discretize else a
-                action[-1] = 1
 
                 # Step physics model
                 self.Aircrafts[agent_index].step(action, self.frequency_factor)
@@ -1541,7 +1553,13 @@ class AerialBattle(MultiAgentEnv):
 
                 # === Fire missile if fire command is active ===
                 kill = 'none'
-                if action[-1] > 0.5:
+                trigger=False
+                if self.Aircrafts[agent_index].is_dummy():
+                    trigger = self.dummy_kill
+                else:
+                    trigger = action[-1] > self.trigger_threshold or self.autotrigger
+
+                if  trigger:
                     kill = self.fire(agent_index, missile_target, missile_tone_attack)
                     # Re-evaluate tones post-fire (may change due to aircraft killed)
                     missile_tone_attack, missile_tone_defence, missile_target = self.check_missile_tone(agent_index)
@@ -1598,7 +1616,6 @@ class AerialBattle(MultiAgentEnv):
         # (e.g., base destruction, shared victories, assists, etc.)
         return self.get_obs(), rewards, terminated, truncated, {'__common__': {'attack_steps' : self.attack_metric, 'kills': self.kill_metric}}
 
-    
     def body_to_vehicle(self, roll, pitch, yaw):
         """
         Compute rotation matrix from body frame to world (vehicle/inertial) frame.
@@ -1697,25 +1714,6 @@ class AerialBattle(MultiAgentEnv):
         scale_y = (screen_size[1] - padding) / max((max_y - min_y), 1)
         scale = min(scale_x, scale_y)
 
-        # === Draw bases ===
-        for i, base in enumerate(self.bases):
-            x, y, _ = base
-            screen_x = int((x - center_x) * scale + screen_size[0] / 2)
-            screen_y = int(screen_size[1] / 2 - (y - center_y) * scale)
-            color = TEAM_COLORS[i % len(TEAM_COLORS)]
-
-            # Draw vulnerability radius
-            vuln_radius_px = int(self.bases_vulnerability_distance * scale)
-            s_vuln = pygame.Surface((vuln_radius_px * 2, vuln_radius_px * 2), pygame.SRCALPHA)
-            pygame.draw.circle(s_vuln, (*color, 40), (vuln_radius_px, vuln_radius_px), vuln_radius_px, width=1)
-            self._screen.blit(s_vuln, (screen_x - vuln_radius_px, screen_y - vuln_radius_px))
-
-            # Draw base marker
-            base_radius = max(3, int(10 * scale))
-            s_base = pygame.Surface((base_radius * 2, base_radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(s_base, (*color, 180), (base_radius, base_radius), base_radius)
-            self._screen.blit(s_base, (screen_x - base_radius, screen_y - base_radius))
-
         # === Draw aircrafts ===
         for idx, aircraft in enumerate(self.Aircrafts):
             telemetry = aircraft.get_physics_telemetry()
@@ -1743,12 +1741,15 @@ class AerialBattle(MultiAgentEnv):
                 pygame.draw.polygon(self._screen, (*color, alpha), points)
 
                 # Draw attack and defense cones
-                cone_params = aircraft.get_cone()
-                if cone_params is not None:
-                    cone_angle_deg, cone_min_dist, cone_max_dist = cone_params
+                attack_cone_params, defence_cone_params = aircraft.get_cones()
+                if attack_cone_params is not None:
+                    a_cone_angle_deg, a_cone_min_dist, a_cone_max_dist = attack_cone_params
+                    d_cone_angle_deg, d_cone_min_dist, d_cone_max_dist = defence_cone_params
                     num_segments = 15
-                    min_len_px = cone_min_dist * scale
-                    max_len_px = cone_max_dist * scale
+                    a_min_len_px = a_cone_min_dist * scale
+                    a_max_len_px = a_cone_max_dist * scale
+                    d_min_len_px = d_cone_min_dist * scale
+                    d_max_len_px = d_cone_max_dist * scale
 
                     for label, angle_offset, a in [
                         ("attack", 0, 60),
@@ -1757,19 +1758,35 @@ class AerialBattle(MultiAgentEnv):
                         cone_angle = yaw + angle_offset
                         cone_pts = []
 
-                        # Outer arc
-                        for i in range(num_segments + 1):
-                            ang = cone_angle - np.radians(cone_angle_deg) / 2 + i * np.radians(cone_angle_deg) / num_segments
-                            dx = max_len_px * np.cos(ang)
-                            dy = -max_len_px * np.sin(ang)
-                            cone_pts.append((screen_x + dx, screen_y + dy))
+                        if label == "attack":
+                            # Outer arc
+                            for i in range(num_segments + 1):
+                                ang = cone_angle - np.radians(a_cone_angle_deg) / 2 + i * np.radians(a_cone_angle_deg) / num_segments
+                                dx = a_max_len_px * np.cos(ang)
+                                dy = -a_max_len_px * np.sin(ang)
+                                cone_pts.append((screen_x + dx, screen_y + dy))
 
-                        # Inner arc (reversed)
-                        for i in reversed(range(num_segments + 1)):
-                            ang = cone_angle - np.radians(cone_angle_deg) / 2 + i * np.radians(cone_angle_deg) / num_segments
-                            dx = min_len_px * np.cos(ang)
-                            dy = -min_len_px * np.sin(ang)
-                            cone_pts.append((screen_x + dx, screen_y + dy))
+                            # Inner arc (reversed)
+                            for i in reversed(range(num_segments + 1)):
+                                ang = cone_angle - np.radians(a_cone_angle_deg) / 2 + i * np.radians(a_cone_angle_deg) / num_segments
+                                dx = a_min_len_px * np.cos(ang)
+                                dy = -a_min_len_px * np.sin(ang)
+                                cone_pts.append((screen_x + dx, screen_y + dy))
+                        
+                        else:
+                            # Outer arc
+                            for i in range(num_segments + 1):
+                                ang = cone_angle - np.radians(d_cone_angle_deg) / 2 + i * np.radians(d_cone_angle_deg) / num_segments
+                                dx = d_max_len_px * np.cos(ang)
+                                dy = -d_max_len_px * np.sin(ang)
+                                cone_pts.append((screen_x + dx, screen_y + dy))
+
+                            # Inner arc (reversed)
+                            for i in reversed(range(num_segments + 1)):
+                                ang = cone_angle - np.radians(d_cone_angle_deg) / 2 + i * np.radians(d_cone_angle_deg) / num_segments
+                                dx = d_min_len_px * np.cos(ang)
+                                dy = -d_min_len_px * np.sin(ang)
+                                cone_pts.append((screen_x + dx, screen_y + dy))
 
                         cone_surface = pygame.Surface(screen_size, pygame.SRCALPHA)
                         pygame.draw.polygon(cone_surface, (*color, a), cone_pts)
@@ -2174,5 +2191,5 @@ def Test_env():
     # Clean up environment (if needed)
     env.close()
 
-#Test_env()
+Test_env()
 
