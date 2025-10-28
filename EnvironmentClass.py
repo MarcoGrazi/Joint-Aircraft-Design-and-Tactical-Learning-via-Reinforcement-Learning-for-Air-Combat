@@ -692,7 +692,7 @@ class AerialBattle(MultiAgentEnv):
         
 
         # === Initial airspeed between 150–200 m/s ===
-        rand_speed = np.random.choice([140, 160, 180, 200])
+        rand_speed = np.random.choice(self.spawning_speeds)
 
         # === Final step: apply the randomized state to the aircraft ===
         aircraft.reset(rand_pos, rand_orient, rand_speed, alive)
@@ -1289,8 +1289,8 @@ class AerialBattle(MultiAgentEnv):
             _, defence_cone = def_aircraft.get_cones()
             track_angle, adverse_angle = self.get_track_adverse_angles_norm(att_aircraft, def_aircraft)
 
-            att_angle_margin = (np.deg2rad(attack_cone[0]/2)-(np.pi*track_angle)) / np.deg2rad(attack_cone[0]/2)
-            def_angle_margin = 0.3 + 0.8 * (adverse_angle-(np.pi-np.deg2rad(defence_cone[0]/2))) / np.deg2rad(defence_cone[0]/2)
+            att_angle_margin = 0.5 + 0.5 * (np.deg2rad(attack_cone[0]/2)-(np.pi*track_angle)) / np.deg2rad(attack_cone[0]/2)
+            def_angle_margin = 0.5 + 0.5 * (adverse_angle-(np.pi-np.deg2rad(defence_cone[0]/2))) / np.deg2rad(defence_cone[0]/2)
             bernoulli_threshold = att_angle_margin * def_angle_margin * tone
 
         # === Sample a Bernoulli trial ===
@@ -1354,8 +1354,6 @@ class AerialBattle(MultiAgentEnv):
         AoA = np.rad2deg(telemetry['AoA'][-1])
         sideslip = np.rad2deg(telemetry['sideslip'][-1])
         altitude = -telemetry['position'][-1][2]
-        att_cone, _ = aircraft.get_cones()
-        optimal_distance = (att_cone[1] + att_cone[2])/2
         [pre_UpAngle_C, pre_SideAngle_C, pre_Speed_C, pre_trigger] = telemetry['commands'][-2]
         [UpAngle_C, SideAngle_C, Speed_C, trigger] = action
         
@@ -1401,6 +1399,8 @@ class AerialBattle(MultiAgentEnv):
         if closest_enemy_plane is not None:
             track_angle, adverse_angle = self.get_track_adverse_angles_norm(aircraft, closest_enemy_plane)
             closure = self.get_closure_rate_norm(aircraft, closest_enemy_plane)
+            _, def_cone = closest_enemy_plane.get_cones()
+            optimal_distance = (def_cone[1]+def_cone[2]) / 2
             optimal_zone_width = reward_config['optimal_zone_width']
 
             TPAR = reward_config['tan_parameter']
@@ -1411,7 +1411,11 @@ class AerialBattle(MultiAgentEnv):
             reward_Pursuit['Pursuit'] = shaped_pursuit * reward_config['AW']
 
             # Closure subject to minimum distance and adverse angle tuning
-            closure_dist_norm = (1+closure) * (angle_advantage)
+            closure_dist_norm = (
+                (dist > def_cone[2]) * (1+closure) * (angle_advantage) +
+                (dist < def_cone[1]) * (-closure) +
+                (abs(dist-optimal_distance)<optimal_zone_width) * (1-abs(closure))
+                )
             reward_Pursuit['Closure'] = closure_dist_norm * reward_config['CW']
 
             sparse_reward['Attack'] = reward_config['att_tone_bonus'] * missile_tone_attack * track_angle

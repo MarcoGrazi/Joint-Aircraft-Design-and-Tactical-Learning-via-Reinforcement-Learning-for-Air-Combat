@@ -307,6 +307,8 @@ class FixedWingAircraft:
         # === Engine thrust force ===
         # Acts along the positive X-axis of the body frame
         F_thrust = np.array([self.max_thrust * throttle, 0.0, 0.0])
+        if F_thrust <= 0.1:
+            F_thrust = np.array([-self.max_thrust*0.3, 0, 0])
 
         # === Total external force and moment in body frame ===
         force = F_thrust + F_weight + F_aero

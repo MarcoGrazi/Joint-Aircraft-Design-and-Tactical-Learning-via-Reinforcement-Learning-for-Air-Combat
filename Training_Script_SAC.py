@@ -17,39 +17,9 @@ from ray.rllib.algorithms.sac import SACConfig
 from ray.tune.registry import register_env
 import trueskill as ts
 
-
-# === Configuration Paths ===
-Folder = 'Training_Runs'
-RunName = 'FinalTrain_Pursuit_Shaping1'
-RunDescription = "New set of trainings to refine reward, overall implementation and performance."
-
-ConfigFile = 'Train_Run_config.yaml'
-Base_Checkpoint = ''
-Adversary_Base_Checkpoint = ''
-Base_Policy_restore = []  # Policies to restore from checkpoint
-policies_to_train=['team_0']
-
 Checkpoint_Window = {} #{checkpoint_000004/team_0 : Rating(), ...}
 Current_Pair = {}
-
-# Path where training data and checkpoints will be stored
-storage_path = os.path.join(os.getcwd(), Folder)
-
-# Set your WandB API key for logging
-os.environ["WANDB_API_KEY"] = "1b8b77cc6fc3631890702b9ecbfed2fdc1551347"
-wandb.login(key=os.environ["WANDB_API_KEY"])  # once, at the top of your script
-
-
-#Create RunName directory inside Folder, with RunDescription inside it
-# === Create Directory and Save Description ===
-run_path = os.path.join(Folder, RunName)
-os.makedirs(run_path, exist_ok=True)
-
-description_path = os.path.join(run_path, "description.txt")
-with open(description_path, "w") as f:
-    f.write(RunDescription)
-
-print(f"Created run directory and saved description at: {description_path}")
+ConfigFile = 'Train_Run_config.yaml'
 
 # === Load YAML experiment configuration ===
 with open(ConfigFile) as f:
@@ -59,6 +29,31 @@ alg_config = yaml_config['alg_config']
 env_config = yaml_config['env_config']
 uav_config = yaml_config['uav_config']
 
+# Set your WandB API key for logging
+os.environ["WANDB_API_KEY"] = alg_config["WANDB_API_KEY"]
+wandb.login(key=os.environ["WANDB_API_KEY"])  # once, at the top of your script
+
+
+#Create RunName directory inside Folder, with RunDescription inside it
+# === Create Directory and Save Description ===
+Folder = alg_config['artifacts_folder']
+RunName = alg_config['run_name']
+RunDescription = (open(ConfigFile).read())
+
+Base_Checkpoint = alg_config['base_checkpoint']
+Adversary_Base_Checkpoint = alg_config['adversary_base_checkpoint']
+Base_Policy_restore = alg_config['base_policy_restore']  # Policies to restore from checkpoint
+policies_to_train = alg_config['policies_to_train']
+
+storage_path = os.path.join(os.getcwd(), Folder)
+run_path = os.path.join(Folder, RunName)
+os.makedirs(run_path, exist_ok=True)
+
+description_path = os.path.join(run_path, "description.txt")
+with open(description_path, "w") as f:
+    f.write(RunDescription)
+
+print(f"Created run directory and saved description at: {description_path}")
 
 # === Custom Callbacks ===
 def ExecuteEpisode(env, algorithm, checkpoint_dir, i):
@@ -439,10 +434,10 @@ dummy_env.close()
 # === Define Multi-Agent Policy Specs ===
 policies = {
     "team_0": (None, obs_space, act_space, {
-        "model": {"fcnet_hiddens": [256, 256], "fcnet_activation": 'relu'},
+        "model": {"fcnet_hiddens": tune.grid_search(alg_config['fcnet_hiddens']), "fcnet_activation": tune.grid_search(alg_config['fcnet_activation'])},
     }),
     "team_1": (None, obs_space, act_space, {
-        "model": {"fcnet_hiddens": [256, 256], "fcnet_activation": 'relu'},
+        "model": {"fcnet_hiddens": tune.grid_search(alg_config['fcnet_hiddens']), "fcnet_activation": tune.grid_search(alg_config['fcnet_activation'])},
     }),
 }
 
@@ -465,31 +460,31 @@ def name_creator(trial):
 algo_config = (
     SACConfig()
     .api_stack(enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False)
-    .environment(env="aerial_battle", env_config={'reward_version': list(env_config['reward_versions'].keys())})
+    .environment(env="aerial_battle", env_config={'reward_version': tune.grid_search(list(env_config['reward_versions'].keys()))})
     .training(
         train_batch_size=tune.grid_search(alg_config['batch_size_per_learner']),
         gamma=tune.grid_search(alg_config['gamma']),
 
         optimization_config = {
-            'actor_learning_rate': 0.00003,
-            'critic_learning_rate': 0.0003,
-            'entropy_learning_rate': 0.0003
+            'actor_learning_rate': tune.grid_search(alg_config['actor_learning_rate']),
+            'critic_learning_rate': tune.grid_search(alg_config['critic_learning_rate']),
+            'entropy_learning_rate': tune.grid_search(alg_config['entropy_learning_rate'])
             },
-        initial_alpha = 1,
-        tau = 0.005,
+        initial_alpha = tune.grid_search(alg_config['initial_alpha']),
+        tau = tune.grid_search(alg_config['tau']),
         grad_clip=50,
         replay_buffer_config={
             'type': 'MultiAgentReplayBuffer',
-            'capacity': tune.grid_search([500000]),
+            'capacity': tune.grid_search(alg_config['replay_buffer_capacity']),
         }
     )
     .env_runners(
-        num_env_runners=11,
-        num_envs_per_env_runner=1,
-        num_cpus_per_env_runner=1,
-        num_gpus_per_env_runner=0,
-        batch_mode="truncate_episodes",
-        sample_timeout_s=120
+        num_env_runners=alg_config['num_env_runners'],
+        num_envs_per_env_runner=alg_config['num_envs_per_env_runner'],
+        num_cpus_per_env_runner=alg_config['num_cpus_per_env_runner'],
+        num_gpus_per_env_runner=alg_config['num_gpus_per_env_runner'],
+        batch_mode=alg_config['batch_mode'],
+        sample_timeout_s=alg_config['sample_timeout_s']
     )
     .multi_agent(
         policies=policies,
