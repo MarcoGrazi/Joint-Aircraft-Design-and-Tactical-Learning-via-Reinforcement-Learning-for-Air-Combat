@@ -437,7 +437,7 @@ policies = {
         "model": {"fcnet_hiddens": tune.grid_search(alg_config['fcnet_hiddens']), "fcnet_activation": tune.grid_search(alg_config['fcnet_activation'])},
     }),
     "team_1": (None, obs_space, act_space, {
-        "model": {"fcnet_hiddens": tune.grid_search(alg_config['fcnet_hiddens']), "fcnet_activation": tune.grid_search(alg_config['fcnet_activation'])},
+        "model": {"fcnet_hiddens": [256, 256], "fcnet_activation": 'relu'},
     }),
 }
 
@@ -453,7 +453,6 @@ def name_creator(trial):
            f"{trial.config['env_config']['reward_version']}_" \
            f"{trial.config['replay_buffer_config']['capacity']}"
     return name
-
 
 
 # === Algorithm Configuration ===

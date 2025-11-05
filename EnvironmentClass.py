@@ -1289,8 +1289,8 @@ class AerialBattle(MultiAgentEnv):
             _, defence_cone = def_aircraft.get_cones()
             track_angle, adverse_angle = self.get_track_adverse_angles_norm(att_aircraft, def_aircraft)
 
-            att_angle_margin = 0.4 + 0.6 * (np.deg2rad(attack_cone[0]/2)-(np.pi*track_angle)) / np.deg2rad(attack_cone[0]/2)
-            def_angle_margin = 0.4 + 0.6 * (adverse_angle-(np.pi-np.deg2rad(defence_cone[0]/2))) / np.deg2rad(defence_cone[0]/2)
+            att_angle_margin = 0.2 + 0.8 * (np.deg2rad(attack_cone[0]/2)-(np.pi*track_angle)) / np.deg2rad(attack_cone[0]/2)
+            def_angle_margin = 0.7 + 0.3 * (adverse_angle-(np.pi-np.deg2rad(defence_cone[0]/2))) / np.deg2rad(defence_cone[0]/2)
             bernoulli_threshold = att_angle_margin * def_angle_margin * tone
 
         # === Sample a Bernoulli trial ===
@@ -1433,6 +1433,9 @@ class AerialBattle(MultiAgentEnv):
             
             reward_Pursuit['Closure'] = closure_dist_norm * reward_config['CW']
 
+            sparse_reward['Trigger'] = -((missile_tone_attack==1) * abs(np.clip(trigger, -1, self.trigger_threshold) - self.trigger_threshold) 
+                                         * reward_config['trigger_penalty'])
+
             sparse_reward['Attack'] = reward_config['att_tone_bonus'] * missile_tone_attack * track_angle
             if missile_target != 'none':
                 self.attack_metric += 1
@@ -1443,9 +1446,10 @@ class AerialBattle(MultiAgentEnv):
             reward_Pursuit['Closure'] = 0
             sparse_reward['Attack'] = 0
             sparse_reward['Defence'] = 0
+            sparse_reward['Trigger'] = 0
         
         if kill != 'none':
-            sparse_reward['Kill'] = reward_config['kill_bonus']
+            sparse_reward['Kill'] = reward_config['kill_bonus'] * missile_tone_attack
             self.kill_metric += 1
 
         #check collision or over-g
