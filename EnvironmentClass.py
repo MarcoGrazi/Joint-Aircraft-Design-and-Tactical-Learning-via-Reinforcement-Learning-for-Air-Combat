@@ -228,7 +228,7 @@ class Aircraft:
         """
 
         # === 1. Convert normalized input angles to radians ===
-        max_angle_rad = np.deg2rad(30)  # maximum angular offset allowed by agent
+        max_angle_rad = np.deg2rad(40)  # maximum angular offset allowed by agent
         v_up   = action[0] * max_angle_rad    # vertical offset from forward
         v_side = action[1] * max_angle_rad    # lateral offset from forward
         v_speed = action[2]                  # speed stays normalized for now
@@ -312,8 +312,8 @@ class Aircraft:
         target_speed = np.clip(target_speed, 0.4, 1)  # Avoid stall speeds
 
         # Scale normalized values to physical units:
-        target_AoA *= 40               # Angle of attack in degrees
-        target_sideslip *= 40         # Sideslip stays in small angle range
+        target_AoA *= 50               # Angle of attack in degrees
+        target_sideslip *= 50         # Sideslip stays in small angle range
         target_roll *= 180            # Roll target in degrees
         target_speed *= 343           # Convert normalized speed to m/s (approx speed of sound)
 
@@ -2214,7 +2214,7 @@ def Test_env():
     # Format: [Up_Angle, Side_Angle, Speed, Fire], all normalized in body frame
     predefined_actions = [
         [0.0, 0, 1, 0],
-        [0.0, 0, 1, 0],
+        [0, 0.5, 1, 0],
         [0.000, 0, 1, 0],
         [0.000, 0, 1, 0],
         [0.000, 0, 1, 0]

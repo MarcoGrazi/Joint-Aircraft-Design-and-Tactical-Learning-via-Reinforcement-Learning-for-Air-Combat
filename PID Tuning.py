@@ -102,8 +102,8 @@ rate_limits = {
 # PID gains (these are arbitrary starting points — you'll need to tune them)
 gains = {
     'AoA':     {'kp': 1.2, 'ki': 0, 'kd': 0.8},
-    'sideslip':{'kp': 5, 'ki': 0, 'kd': 0.8},
-    'roll':    {'kp': 5, 'ki': 0, 'kd': 1.2},
+    'sideslip':{'kp': 3, 'ki': 0, 'kd': 0.8},
+    'roll':    {'kp': 3, 'ki': 0, 'kd': 0.8},
     'speed':   {'kp': 25, 'ki': 0, 'kd': 0}
 }
 
@@ -205,7 +205,7 @@ def PID_Control(action):
     return commands['throttle'], commands['elevator'], commands['aileron'], commands['rudder']
 
 
-aircraft = FixedWingAircraft(config['uav_config'][0], config['env_config']['rho'],
+aircraft = FixedWingAircraft(config['uav_config'][1], config['env_config']['rho'],
                              config['env_config']['g'], config['env_config']['physics_frequency'])
 
 aircraft.reset([0,0,0], [0,0,0], 200)
@@ -214,13 +214,13 @@ commands_sequence = [
     [0, 0, 0, 1],
     [0, 0, 0, 1],
     [0, 0, 0, 1],
+    [0, 0, 0.5, 1],
+    [0, 0, 0.5, 1],
     [0, 0, 0, 1],
-    [0, 0, 0, 0.4],
-    [0, 0, 0, 0.4],
-    [0, 0, 0, 0.4],
-    [0, 0, 0, 0.4],
-    [0, 0, 0, 0.4],
-    [0, 0, 0, 0.4],
+    [0, 0, 0, 1],
+    [0, 0, 0, 1],
+    [0, 0, 0, 1],
+    [0, 0, 0, 1],
 ]
 c = 0
 action = commands_sequence[c]

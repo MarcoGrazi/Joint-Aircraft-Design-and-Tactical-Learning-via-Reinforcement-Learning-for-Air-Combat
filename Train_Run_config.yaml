@@ -2,8 +2,8 @@
   {
     "WANDB_API_KEY": "1b8b77cc6fc3631890702b9ecbfed2fdc1551347",
     'artifacts_folder': 'Training_Runs',
-    'run_name':'FinalTrain_Pursuit_C04',
-    'base_checkpoint': 'Best_C03',
+    'run_name':'FinalTrain_Pursuit_C02',
+    'base_checkpoint': 'Best_C01',
     'adversary_base_checkpoint': '',
     'base_policy_restore': ['team_0'],
     'policies_to_train': ['team_0'],
@@ -46,10 +46,10 @@
       'env_size':[15000, 15000, 10000],
       'max_size': 30000,
       'collision_distance': 30,
-      'dummy': 'random', # 'line', 'curve', 'none', 'mixed', 'random'
-      'change_speed': True, 
+      'dummy': 'mixed', # 'line', 'curve', 'none', 'mixed', 'random'
+      'change_speed': False, 
       'random_change_period_options': [100, 150, 200, 250],
-      'dummy_turn_options': [1000, 1500, 2000, 3000], 
+      'dummy_turn_options': [3000, 5000], 
       'dummy_dir_options': [1, -1],
       'dummy_speed_options': [0, 0, 25, -25, 50, -50],
       'dummy_kill': True,
@@ -94,13 +94,13 @@
   'uav_config' :
     {0:  # UAV Model 0
        {
-       'mass': 4000,
+       'mass': 5000,
        'max_speed':343, #speed of sound (after this the aero model is not realistic anymore)
        'max_acc': 20,
-       'max_thrust': 80000,
-       'attack_cone': [90, 1000, 5000],
+       'max_thrust': 60000,
+       'attack_cone': [120, 1000, 5000],
        'defence_cone': [200, 1000, 5000],
-       'bounding_box': [9413, 8017, 1446],
+       'bounding_box': [9.4, 8, 1.4],
        'inertia_tensor':
          [ [6.817e3, 0, 0 ],
            [0, 3.551e4, 0],
@@ -131,7 +131,7 @@
        'aleiron':
          {
            'coefficients': {
-             'lift': [ 0.0000000065, 0.000004168, -0.0000262498, -0.0165697988, 0.1657873007 ],
+             'lift': [ 0.5, 0],
              'drag': [ 0.0000001361, 0.000056624, -0.0004479701, 0.01 ],
            },
            'COF': [ -2, 3, 0 ],
@@ -140,7 +140,7 @@
 
        'elevons': {
          'coefficients': {
-           'lift': [-0.0000021006, 0.0000014209, 0.0170200042, -0.0043365995],
+           'lift': [0.6, 0],
            'drag': [0.0002803707, 0.0002215203, 0.01],
          },
          'COF': [-3.65,0,0],
@@ -149,7 +149,7 @@
 
        'rudders': {
          'coefficients': {
-           'lateral': [-0.0000026576, 0, 0.021438325, 0],
+           'lateral': [0.2, 0],
            'drag': [-0.0001966466, 0, 0.01],
          },
          'COF': [ -3, 0, 0 ],
@@ -169,21 +169,19 @@
         }
   },
 
-  1: {
-      'mass': 0,
+    1: # UAV Model 1
+       {
+       'mass': 6000,
        'max_speed':343, #speed of sound (after this the aero model is not realistic anymore)
        'max_acc': 20,
-       'max_thrust': 0,
+       'max_thrust': 120000,
        'attack_cone': [120, 1000, 5000],
-       'defence_cone': [120, 1000, 5000],
-       'bounding_box': [0,0,0],
+       'defence_cone': [200, 1000, 5000],
+       'bounding_box': [8.1, 6.3, 1.6],
        'inertia_tensor':
-         [ [0, 0, 0 ],
-           [0, 0, 0],
-           [0, 0, 0]],
-         #[[0,0, 0],
-         # [0,0,0],
-         # [0,0,0]],
+         [ [1.9e4, 0, 0 ],
+           [0, 1.9e4, 0],
+           [0, 0, 2.2e4]],
 
        'aerobrake_CD': 0.4,
        'aerobrake_surface': 3,
@@ -192,59 +190,58 @@
            'coefficients':
              {
                'front' : {
-                           'lift': [0, 0, 0, 0],
-                           'drag': [0, 0, 0],
+                           'lift': [0.0000000256139, -0.0000046341745, -0.000085684744, 0.0234959244665, 0.0369768735596],
+                           'drag': [-0.00000000754,-0.0000003855746, 0.0001404192042, 0.0011983067446, 0.0051677757234],
                },
                'side': {
-                         'lateral':[0, 0, 0, 0],
-                         'drag':[0, 0, 0],
+                         'lateral':[-0.00000037, 0.0025],
+                         'drag':[0.0000164511278, 0, 0.0208105263158],
                },
              },
-           'COF' : [0, 0, 0],
-           'surface': 0,
+           'COF' : [-0.05, 0, 0],
+           'surface': 118,
+
        },
 
        'aleiron':
          {
            'coefficients': {
-             'lift': [ 0, 0, 0, 0, 0],
-             'drag': [ 0, 0, 0, 0],
+             'lift': [ 0.6, 0],
+             'drag': [ 0.0000001361, 0.000056624, -0.0004479701, 0.01 ],
            },
-           'COF': [ 0, 0, 0 ],
-           'surface': 0,
+           'COF': [ 2, 1.5, 0 ],
+           'surface': 5,
          },
 
        'elevons': {
          'coefficients': {
-           'lift': [0, 0, 0, 0],
-           'drag': [0, 0, 0],
+           'lift': [0.6, 0],
+           'drag': [0.0002803707, 0.0002215203, 0.01],
          },
-         'COF': [0,0,0],
-         'surface':  0,
+         'COF': [2,0,0],
+         'surface':  -5,
        },
 
        'rudders': {
          'coefficients': {
-           'lateral': [0, 0, 0, 0],
-           'drag': [0, 0, 0],
+           'lateral': [0.2, 0],
+           'drag': [-0.0001966466, 0, 0.01],
          },
-         'COF': [ 0, 0, 0 ],
-         'surface': 0,
-       },
-
+         'COF': [ -2.5, 0, 0 ],
+         'surface': 5,
+        },
        "gains": {
-          "AoA": {"kp": 5, "ki": 3, "kd": 1},
-          "sideslip": {"kp": 8, "ki": 2, "kd": 1.8},
-          "roll": {"kp": 10, "ki": 0.2, "kd": 2},
-          "speed": {"kp": 80, "ki": 0.8, "kd": 0.0},
+            'AoA':      {'kp': 1.2, 'ki': 0, 'kd': 0.8},   # Angle of Attack control
+            'sideslip': {'kp': 3, 'ki': 0.1, 'kd': 0.8},   # Lateral balance / sideslip
+            'roll':     {'kp': 3, 'ki': 0.1, 'kd': 0.8},   # Roll angle control
+            'speed':    {'kp': 20, 'ki': 0.8, 'kd': 0.0}   # Throttle/speed regulation
         },
         'rate_limits': {
-          'elevator': 5.0,
-          'aileron': 5.0,
-          'rudder': 10.0,
-          'throttle': 0.8,
+          'elevator': 20,
+          'aileron': 20,
+          'rudder': 20,
+          'throttle': 20,
         }
-  }
-  
+    }
   }
 }

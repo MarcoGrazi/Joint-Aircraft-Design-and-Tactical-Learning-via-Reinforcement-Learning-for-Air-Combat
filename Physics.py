@@ -443,11 +443,11 @@ class FixedWingAircraft:
         # CL is approximated linearly instead of using polynomials for now
 
         # Right aileron (CL increases with positive angle)
-        CL_1 = 0.5 * angle
+        CL_1 = np.polyval(self.al_CL_c, angle)  # More accurate polynomial fit
         CD_1 = np.polyval(self.al_CD_c, angle * 40)  # Adjust scaling to match lookup shape
 
         # Left aileron (opposite deflection)
-        CL_2 = 0.5 * -angle
+        CL_2 = np.polyval(self.al_CL_c, -angle)  # More accurate polynomial fit
         CD_2 = np.polyval(self.al_CD_c, -angle * 40)
 
         # === Dynamic pressure ===
@@ -491,7 +491,7 @@ class FixedWingAircraft:
 
         # === Aerodynamic coefficients ===
         # Lift is assumed linear in angle; you use a simplified model here.
-        CL = 0.6 * -angle  # Negate for consistent convention: positive deflection → nose-up
+        CL = np.polyval(self.el_CL_c, -angle)  # More accurate polynomial fit
         CD = np.polyval(self.el_CD_c, -angle * 40)  # Drag increases with deflection
 
         # === Dynamic pressure ===
@@ -525,7 +525,7 @@ class FixedWingAircraft:
 
         # === Aerodynamic coefficients ===
         # You use a linearized side force model and a polynomial drag model.
-        CY = 0.2 * angle  # Approximate linear relation (or use poly if needed)
+        CY = np.polyval(self.r_CY_c, angle)  # More accurate polynomial fit
         CD = np.polyval(self.r_CD_c, angle * 40)  # Scaled input for polynomial domain
 
         # === Dynamic pressure ===
