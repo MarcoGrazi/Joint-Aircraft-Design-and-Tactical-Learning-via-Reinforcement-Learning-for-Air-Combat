@@ -92,7 +92,7 @@ class FixedWingAircraft:
             'commands': []         # Control input history
         }
 
-    def reset(self, position, orientation, speed):
+    def reset(self, position, orientation, speed, config):
         """
         Reset the aircraft's dynamic state to initial conditions.
 
@@ -100,6 +100,49 @@ class FixedWingAircraft:
         :param orientation: Initial Euler angles (roll, pitch, yaw) in radians (3D vector)
         :param speed: Initial forward speed in body frame along X-axis (scalar)
         """
+
+                # Aircraft physical properties
+        self.m = config['mass']                            # Aircraft mass [kg]
+        self.max_speed = config['max_speed']              # Maximum allowable airspeed [m/s]
+        self.max_acc = config['max_acc']                  # Maximum allowable acceleration [m/s^2]
+        self.bounding_box = np.array(config['bounding_box'])  # Aircraft bounding dimensions for collision/physics
+
+        # Inertia tensor and its inverse for rotational dynamics
+        inertia_tensor = np.array(config['inertia_tensor'], dtype=np.float64)
+        self.I = inertia_tensor
+        self.I_inv = np.linalg.inv(inertia_tensor)         # Pre-compute inverse for torque calculations
+
+        # === Aerodynamic Coefficients (from config) ===
+        # Front section (main wing/body)
+        self.a_CL_c = np.array(config['airframe']['coefficients']['front']['lift'])     # Lift coeffs
+        self.a_CDL_c = np.array(config['airframe']['coefficients']['front']['drag'])    # Drag coeffs
+        self.a_CY_c = np.array(config['airframe']['coefficients']['side']['lateral'])   # Side force coeffs
+        self.a_CDY_c = np.array(config['airframe']['coefficients']['side']['drag'])     # Side drag coeffs
+        self.a_COF = np.array(config['airframe']['COF'])                                 # Center of force [x, y, z]
+        self.a_surface = config['airframe']['surface']                                   # Surface area [m²]
+
+        # Ailerons (roll control surfaces)
+        self.al_CL_c = np.array(config['aleiron']['coefficients']['lift'])
+        self.al_CD_c = np.array(config['aleiron']['coefficients']['drag'])
+        self.al_COF = np.array(config['aleiron']['COF'])
+        self.al_surface = config['aleiron']['surface']
+
+        # Elevons (pitch control surfaces)
+        self.el_CL_c = np.array(config['elevons']['coefficients']['lift'])
+        self.el_CD_c = np.array(config['elevons']['coefficients']['drag'])
+        self.el_COF = np.array(config['elevons']['COF'])
+        self.el_surface = config['elevons']['surface']
+
+        # Rudders (yaw control surfaces)
+        self.r_CY_c = np.array(config['rudders']['coefficients']['lateral'])
+        self.r_CD_c = np.array(config['rudders']['coefficients']['drag'])
+        self.r_COF = np.array(config['rudders']['COF'])
+        self.r_surface = config['rudders']['surface']
+
+        # Maximum available engine thrust [N]
+        self.max_thrust = config['max_thrust']
+        self.aerobrake_CD = config['aerobrake_CD']
+        self.aerobrake_surface = config['aerobrake_surface']
 
         # === Reset dynamic state variables ===
 

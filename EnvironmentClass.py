@@ -117,7 +117,7 @@ class Aircraft:
         """
         return self.dummy_type != 'none'
 
-    def reset(self, position, orientation, speed, alive):
+    def reset(self, position, orientation, speed, alive, UAV_config):
         """
         Resets the aircraft's state and telemetry to initial values.
 
@@ -128,8 +128,13 @@ class Aircraft:
             alive (bool or int): Whether the aircraft starts alive (1) or dead (0).
         """
 
+        self.attack_cone = UAV_config['attack_cone']       # (angle_deg, min_dist, max_dist)
+        self.defence_cone = UAV_config['defence_cone']
+        self.gains = UAV_config['gains']
+        self.rate_limits = UAV_config['rate_limits']
+
         # Reset physical model state (position, orientation, velocity, etc.)
-        self.physical_model.reset(position, orientation, speed)
+        self.physical_model.reset(position, orientation, speed, UAV_config)
 
         self.speed = speed
 
@@ -584,6 +589,7 @@ class AerialBattle(MultiAgentEnv):
         # === Tracking + Stats ===
         self.agent_report = env_config["agent_report_name"]
         self.episode_rewards = {}     # Dict to accumulate rewards per agent
+        self.episode_returns = {}     # Dict to store total returns per agent
         self.episode_steps = 0
         self.attack_metric = 0
         self.kill_metric = 0
@@ -597,6 +603,8 @@ class AerialBattle(MultiAgentEnv):
         self.spawning_distance = env_config['spawning_distance']
         self.spawning_orientations = env_config['spawning_orientations']
         self.spawning_speeds = env_config['spawning_speeds']
+        self.plane_model = env_config['plane_model']
+        self.UAV_config = UAV_config
 
         for i in range(self.num_teams):
             for j in range(self.num_agents_team):
@@ -606,7 +614,7 @@ class AerialBattle(MultiAgentEnv):
                 # === Instantiate Aircraft ===
                 self.Aircrafts.append(
                     Aircraft(
-                        UAV_config[env_config['plane_model'][i]],
+                        self.UAV_config[self.plane_model[i]],
                         env_config['rho'],
                         env_config['g'],
                         env_config['physics_frequency'],
@@ -630,6 +638,9 @@ class AerialBattle(MultiAgentEnv):
 
         self.agents = self.possible_agents.copy()  # Initialize agents for current episode
 
+    def set_plane_model(self, team_id, model_name):
+        self.plane_model[team_id] = model_name
+        print(f"Set plane model for team {team_id} to {model_name}")
 
     def get_observation_space(self, team_id):
         """
@@ -722,7 +733,7 @@ class AerialBattle(MultiAgentEnv):
         rand_speed = np.random.choice(self.spawning_speeds)
 
         # === Final step: apply the randomized state to the aircraft ===
-        aircraft.reset(rand_pos, rand_orient, rand_speed, alive)
+        aircraft.reset(rand_pos, rand_orient, rand_speed, alive, self.UAV_config[self.plane_model[team]])
 
     def reset(self, seed=42, testing=False, options=None):
         """
@@ -756,6 +767,7 @@ class AerialBattle(MultiAgentEnv):
         # === Reset episode rewards ===
         for agent_id in self.possible_agents:
             self.episode_rewards[agent_id] = []
+            self.episode_returns[agent_id] = 0.0
 
         # === Determine which agents are initially alive ===
         # alive_masks[team][agent] = 1 if active
@@ -1501,7 +1513,7 @@ class AerialBattle(MultiAgentEnv):
         normalized_reward_Flight = sum(reward_Flight.values())
         sparse_reward_sum = sum(sparse_reward.values())
 
-        normalized_total_reward = (reward_config['GFW'] * normalized_reward_Flight +
+        normalized_reward = (reward_config['GFW'] * normalized_reward_Flight +
                                     reward_config['PW'] * normalized_reward_Pursuit) + sparse_reward_sum
 
         Total_Reward.update(reward_Flight)
@@ -1511,7 +1523,9 @@ class AerialBattle(MultiAgentEnv):
         
         #print(normalized_total_reward)
         self.episode_rewards[self.possible_agents[agent_index]].append(Total_Reward.copy())
-        return normalized_total_reward, terminated, truncated
+        self.episode_returns[self.possible_agents[agent_index]] += normalized_reward
+
+        return normalized_reward, terminated, truncated
     
     def CLI_report(self, telemetry, action):
         """
@@ -1619,6 +1633,9 @@ class AerialBattle(MultiAgentEnv):
                     else:
                         victim_index = self.possible_agents.index(missile_target)
                         self.Aircrafts[victim_index].kill()
+                        rewards[self.possible_agents[victim_index]] = -self.Reward_Config['terminal_penalty']
+                        self.episode_rewards[self.possible_agents[victim_index]].append({'Termination': -self.Reward_Config['terminal_penalty']})
+                        self.episode_returns[self.possible_agents[victim_index]] += -self.Reward_Config['terminal_penalty']
 
                 # === Compute agent reward, termination, and truncation ===
                 rewards[player], terminated[player], truncated[player] = (
@@ -1670,18 +1687,15 @@ class AerialBattle(MultiAgentEnv):
         for team in range(self.num_teams):
             score[f'team_{team}'] = 0
             for air in range(self.num_agents_team):
-                aircraft = self.Aircrafts[team*self.num_agents_team + air]
-                score[f'team_{team}'] += aircraft.get_reward()
-                if aircraft.is_alive():
-                    score[f'team_{team}'] += 2000
+                agent_return = self.episode_returns[self.possible_agents[team*self.num_agents_team + air]]
+                score[f'team_{team}'] += agent_return
 
-        
         # NumPy arrays aligned with dict order
         teams  = np.array(list(score.keys()))
         scores = np.array(list(score.values()))
         m = scores.max()
         mask = scores != m
-        tied = np.any((m - scores[mask]) <= 300)
+        tied = np.any((m - scores[mask]) <= 100)
 
         return "draw" if tied else teams[np.argmax(scores)]
 
@@ -2214,7 +2228,7 @@ def Test_env():
     # Format: [Up_Angle, Side_Angle, Speed, Fire], all normalized in body frame
     predefined_actions = [
         [0.0, 0, 1, 0],
-        [0, 0.5, 1, 0],
+        [0, -0.5, 1, 0],
         [0.000, 0, 1, 0],
         [0.000, 0, 1, 0],
         [0.000, 0, 1, 0]

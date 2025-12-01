@@ -16,9 +16,12 @@ from ray import tune
 from ray.rllib.algorithms.sac import SACConfig
 from ray.tune.registry import register_env
 import trueskill as ts
+import pickle
+import json
+import matplotlib.pyplot as plt
+from matplotlib import cm
 
-Checkpoint_Window = {} #{checkpoint_000004/team_0 : Rating(), ...}
-Current_Pair = {}
+
 ConfigFile = 'Train_Run_config.yaml'
 
 # === Load YAML experiment configuration ===
@@ -40,9 +43,10 @@ Folder = alg_config['artifacts_folder']
 RunName = alg_config['run_name']
 RunDescription = (open(ConfigFile).read())
 
-Base_Checkpoint = alg_config['base_checkpoint']
-Adversary_Base_Checkpoint = alg_config['adversary_base_checkpoint']
-Base_Policy_restore = alg_config['base_policy_restore']  # Policies to restore from checkpoint
+Checkpoints = alg_config['initial_checkpoints']  # List of checkpoints to initialize the TrueSkill window
+Ratings = {}
+Current_Match = {}
+Match_History = []
 policies_to_train = alg_config['policies_to_train']
 
 storage_path = os.path.join(os.getcwd(), Folder)
@@ -92,19 +96,113 @@ def ExecuteEpisode(env, algorithm, checkpoint_dir, i):
     if hasattr(env, "plot_rewards"):
         env.plot_rewards(checkpoint_dir_i)
 
-    if Adversary_Base_Checkpoint:
+    if len(Checkpoints)>1:
         return env.get_winning_team()
 
-def TrueSkill(rank, Current_Pair_rating, Starting_Agents_Number):
-    rate_team_0 = [Current_Pair_rating['team_0']] * Starting_Agents_Number
-    rate_team_1 = [Current_Pair_rating['team_1']] * Starting_Agents_Number
+def LoadCheckpoint(algorithm, checkpoint_name, team_id, policy_id):
+    checkpoint_path = os.path.join(storage_path, RunName, checkpoint_name)
+    restored = algorithm.get_policy(policy_id).from_checkpoint(checkpoint_path)[policy_id]
+    weights = restored.get_weights()
+    algorithm.get_policy(team_id).set_weights(weights)
+    print(f"Loaded policy {policy_id} for {team_id}")
 
-    (new_rate_team_0,), (new_rate_team_1,) = ts.rate([rate_team_0, rate_team_1], rank)
+def Export_Weights(algorithm, export_path, policy_id):
+    os.makedirs(export_path, exist_ok=True)
 
-    return new_rate_team_0, new_rate_team_1
+    policy = algorithm.get_policy(policy_id)
+    weights = policy.get_weights()
+
+    weights_file = os.path.join(export_path, f"weights.pkl")
+
+    with open(weights_file, "wb") as f:
+        pickle.dump(weights, f)
+
+    print(f"Exported weights to {weights_file}")
+
+def Import_Weights(algorithm, import_path, team_id):
+    weights_file = os.path.join(import_path, f"weights.pkl")
+
+    with open(weights_file, "rb") as f:
+        weights = pickle.load(f)
+
+    algorithm.get_policy(team_id).set_weights(weights)
+
+    print(f"Imported weights from {weights_file} to {team_id}")
+
+def TrueSkill(rank, Current_Match_rating, Starting_Agents_Number):
+    rate_teams = []
+    for key in Current_Match_rating.keys():
+        rate_teams.append([Current_Match_rating[key]] * Starting_Agents_Number)
+
+    new_rates = ts.rate(rate_teams, rank)
+    
+    new_rate_teams = []
+    for team_rates in new_rates:
+        new_rate_teams.append(team_rates[0])
+
+    return new_rate_teams
 
 def score(r):  # conservative for safety
     return r.mu - 3.0 * r.sigma
+
+def plot_and_save_matching_history(Matching_History, Ratings, save_dir="plots"):
+    """
+    Matching_History: list of dicts (one dict per round)
+    Ratings: dict of {checkpoint_name: TrueSkillRating(mu, sigma)}
+    """
+
+    # 1. Ensure output directory exists
+    os.makedirs(save_dir, exist_ok=True)
+
+    # 2. Save Matching_History as JSON
+    json_path = os.path.join(save_dir, "matching_history.json")
+    with open(json_path, "w") as f:
+        json.dump(Matching_History, f, indent=2)
+    print(f"Saved Matching_History to {json_path}")
+
+    # -------------------------
+    # 3. Plot Gaussian curves for Ratings
+    # -------------------------
+    if not Ratings:
+        print("Ratings dictionary is empty — skipping Gaussian plot.")
+        return
+
+    plt.figure(figsize=(12, 6))
+
+    # Collect all mus to set a reasonable x-range
+    all_mus = np.array([r.mu for r in Ratings.values()])
+    all_sigmas = np.array([r.sigma for r in Ratings.values()])
+
+    # Create x-axis range covering all distributions
+    xmin = (all_mus - 4 * all_sigmas).min()
+    xmax = (all_mus + 4 * all_sigmas).max()
+    x = np.linspace(xmin, xmax, 400)
+
+    # Colormap for distinct colors
+    colors = cm.get_cmap('tab20', len(Ratings))
+
+    for idx, (checkpoint, rating) in enumerate(Ratings.items()):
+        mu = rating.mu
+        sigma = rating.sigma
+
+        # Gaussian formula
+        y = (1.0 / (sigma * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
+
+        plt.plot(x, y, label=f"{checkpoint} (μ={mu:.1f}, σ={sigma:.1f})",
+                 color=colors(idx))
+
+    plt.title("TrueSkill Gaussian Distributions for Each Checkpoint")
+    plt.xlabel("Skill Estimate")
+    plt.ylabel("Probability Density")
+    plt.legend(loc="upper right", fontsize=8)
+    plt.grid(True, linestyle="--", alpha=0.3)
+    plt.tight_layout()
+
+    ratings_path = os.path.join(save_dir, "ratings_gaussians.png")
+    plt.savefig(ratings_path)
+    plt.close()
+
+    print(f"Saved Gaussian Ratings plot to {ratings_path}")
 
 # Save videos, trajectories, and telemetry plots on each checkpoint
 class SaveArtifactsOnCheckpoint(DefaultCallbacks):
@@ -116,8 +214,9 @@ class SaveArtifactsOnCheckpoint(DefaultCallbacks):
             os.makedirs(checkpoint_dir, exist_ok=True)
 
             env = algorithm.env_creator({'reward_version': 1})  # Must be num_env_runners = 1
+            num_evaluation_episodes = alg_config['num_evaluation_episodes']
 
-            for i in range(8):  # Save 5 rollouts
+            for i in range(num_evaluation_episodes):  # Save 5 rollouts
                 ExecuteEpisode(env, algorithm, checkpoint_dir, i)
 
             print(f"Finished Checkpoint at {checkpoint_dir}")
@@ -125,44 +224,10 @@ class SaveArtifactsOnCheckpoint(DefaultCallbacks):
 class SelfPlayRoundEvaluatorCheckpoint(DefaultCallbacks):
     def __init__(self):
         super().__init__()
-        self.Checkpoint_Window = Checkpoint_Window #{checkpoint_000004/team_0 : Rating(), ...}
-        self.Current_Pair = Current_Pair # {team_0 : checkpoint_3999/team_1, team_1: checkpoint_3999/team_1} always num_teams entries
-    
-    def LoadCheckpoint(self, algorithm, checkpoint, id, pair_id, checkpoint_dir):
-            print("\n++++++++++++++++++++++ Loading Checkpoint +++++++++++++++++++++\n")
-            checkpoint_path = os.path.join(checkpoint_dir, checkpoint)
-            print(checkpoint_path)
-
-            restored = algorithm.get_policy(id).from_checkpoint(checkpoint_path)[id]
-            weights = restored.get_weights()
-            algorithm.get_policy(id).set_weights(weights)
-            print(f"Loaded policy {id}")
-
-            self.Current_Pair[pair_id] = f"{checkpoint}/{id}"
-            print(self.Checkpoint_Window)
-            print(f"Current_Pairing: {self.Current_Pair}")
-            print("\n++++++++++++++++++++++ Checkpoint Loaded +++++++++++++++++++++\n")
+        self.Checkpoints = Checkpoints 
+        self.Current_Match = Current_Match 
+        self.Ratings = Ratings
         
-    def RandomOpponentDraw(self, temperature: float = 1.0, k: float = 3.0):
-        keys = self.Checkpoint_Window.keys()
-        mus = np.array([self.Checkpoint_Window[k].mu for k in keys], float)
-        sig = np.array([self.Checkpoint_Window[k].sigma for k in keys], float)
-
-        scores = mus - k * sig
-        t = max(1e-9, float(temperature))
-        z = (scores - scores.max()) / t
-        np.clip(z, -700, 700, out=z)  # avoid overflow
-        w = np.exp(z)
-        probability_softmax = w / w.sum()
-
-        keys = np.array(list(self.Checkpoint_Window.keys()))
-        drawn_key = np.random.choice(keys, p=probability_softmax)
-
-        if drawn_key!=Base_Checkpoint: 
-            return drawn_key.split('/', 1)
-        else:
-            return drawn_key, 'team_0'
-
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
         if algorithm.iteration % alg_config['checkpoint_freq'] == 0:
             trial_name = os.path.basename(algorithm._logdir)
@@ -172,59 +237,96 @@ class SelfPlayRoundEvaluatorCheckpoint(DefaultCallbacks):
 
             env = algorithm.env_creator({'reward_version': 1})  # Must be num_env_runners = 1
 
+            num_evaluation_episodes = alg_config['num_evaluation_episodes']
             starting_agents_number = env_config['alive_agents_start']
-            Current_Pair_rating = {}
-            for key in self.Current_Pair.keys():
-                Current_Pair_rating[key] = self.Checkpoint_Window[self.Current_Pair[key]]
+            Current_Match_rating = {}
+            for key in self.Current_Match.keys():
+                Current_Match_rating[key] = self.Ratings[self.Current_Match[key]]
 
-            for i in range(15 * starting_agents_number):  # roughly computed necessary trials for TrueSkill updates 
+            for i in range(num_evaluation_episodes):  # roughly computed necessary trials for TrueSkill updates 
                 winning_team = ExecuteEpisode(env, algorithm, checkpoint_dir, i)
                 print(f"result: {winning_team}")
                 if winning_team == 'draw':
-                    rank = [0, 0]
-                    new_team_0, new_team_1 = TrueSkill(rank, Current_Pair_rating, starting_agents_number)
-                    Current_Pair_rating['team_0'] = new_team_0
-                    Current_Pair_rating['team_1'] = new_team_1
+                    rank = np.zeros(len(self.Current_Match))
+                    new_rate_teams = TrueSkill(rank, Current_Match_rating, starting_agents_number)
+                    for key in Current_Match_rating.keys():
+                        Current_Match_rating[key] = new_rate_teams[int(key[-1])]
                 else:
-                    rank = [1, 1]
+                    rank = np.ones(len(self.Current_Match))
                     rank[int(winning_team[-1])] = 0
-                    new_team_0, new_team_1 = TrueSkill(rank, Current_Pair_rating, starting_agents_number)
-                    Current_Pair_rating['team_0'] = new_team_0
-                    Current_Pair_rating['team_1'] = new_team_1
+                    new_rate_teams = TrueSkill(rank, Current_Match_rating, starting_agents_number)
+                    for key in Current_Match_rating.keys():
+                        Current_Match_rating[key] = new_rate_teams[int(key[-1])]
+                print(f"Current Match Ratings: {Current_Match_rating}")
+
+            # Update Ratings
+            for key in self.Current_Match.keys():
+                self.Ratings[self.Current_Match[key]] = Current_Match_rating[key]
             
-            #save higher score checkpoint, update score adversary checkpoint in window.
-            if score(new_team_0) >= score(new_team_1):
-                # update losing adversary score in window
-                self.Checkpoint_Window[self.Current_Pair['team_1']] = new_team_1
-
-                #load new adversary in team_1
-                adversary, policy_id = self.RandomOpponentDraw()
-                if adversary == Base_Checkpoint or adversary==Adversary_Base_Checkpoint:
-                    self.LoadCheckpoint(algorithm, adversary, policy_id, 'team_1', os.path.join(storage_path, RunName))
-                else: 
-                    self.LoadCheckpoint(algorithm, adversary, policy_id, 'team_1', trial_dir)
-
-                # save tune created checkpoint to window with its rating
-                checkpoint_id = (algorithm.iteration // alg_config['checkpoint_freq'])-1
-                checkpoint_name = f"checkpoint_{checkpoint_id:06d}/team_0"
-                self.Checkpoint_Window[checkpoint_name] = new_team_0
+            # Prepare next round pairings based on updated ratings:
+            # ray will automatically create a checkpoint
+            scores = [score(r) for r in Current_Match_rating.values()]
+            maxkey = f"team_{np.argmax(scores, axis=0)}"
+            round_id = (algorithm.iteration // alg_config["checkpoint_freq"])
             
-            else:
-                # update losing adversary score in window
-                self.Checkpoint_Window[self.Current_Pair['team_0']] = new_team_0
+            # with ray 2.48.0, I had problems saving a checkpoint with .save_to_Checkpoint, while the ray.tune worked fine.
+            # this has another problem which is that tune creates checkpoints after the on_train_result callback, so the created 
+            # checkpoint has not been created yet here. 
+            # in the end I decided to use a pkl file to save the weights instead of ray checkpoint system. The winner and loser(s) are saved
+            # and then the first gets moved to the non-training position, team_0. the next match contenders are selected randomly 
+            # from the remaining checkpoints. 
 
-                #load new adversary in team_0
-                adversary, policy_id = self.RandomOpponentDraw()
-                if adversary == Base_Checkpoint or adversary==Adversary_Base_Checkpoint:
-                    self.LoadCheckpoint(algorithm, adversary, policy_id, 'team_0', os.path.join(storage_path, RunName))
-                else: 
-                    self.LoadCheckpoint(algorithm, adversary, policy_id, 'team_0', trial_dir)
+            # Update Checkpoints dictionary with winner's new checkpoint
+            winner_old_check = self.Current_Match[maxkey]
+            winner_old_name = winner_old_check.split('P')[0][:-2]
+            plane_model = winner_old_check.split('P')[1]  # assuming format 'checkpoint_name/plane_model'
+            Rating = Current_Match_rating[maxkey]
 
-                # save tune created checkpoint to window with its rating
-                checkpoint_id = (algorithm.iteration // alg_config['checkpoint_freq'])-1
-                checkpoint_name = f"checkpoint_{checkpoint_id:06d}/team_1"
-                self.Checkpoint_Window[checkpoint_name] = new_team_1
-        return self.Checkpoint_Window, self.Current_Pair
+            winner_new_check = f"{winner_old_name}_{round_id}P{plane_model}"
+            export_path = os.path.join(storage_path, RunName, trial_name, winner_new_check)
+            Export_Weights(algorithm, export_path, maxkey)
+
+            self.Checkpoints[self.Checkpoints.index(winner_old_check)] = winner_new_check
+            self.Ratings[winner_new_check] = Rating
+            self.Ratings.pop(winner_old_check)
+
+            Import_Weights(algorithm, export_path, 'team_0')
+
+            # Update Checkpoints dictionary with new contender's checkpoint
+            for loser in self.Current_Match.keys():
+                if loser != maxkey:
+                    loser_old_check = self.Current_Match[loser]
+                    loser_old_name = loser_old_check.split('P')[0][:-2]
+                    plane_model = loser_old_check.split('P')[1]  # assuming format 'checkpoint_name/plane_model'
+                    Rating = Current_Match_rating[loser]
+
+                    loser_new_check = f"{loser_old_name}_{round_id}P{plane_model}"
+                    export_path = os.path.join(storage_path, RunName, trial_name, loser_new_check)
+                    Export_Weights(algorithm, export_path, maxkey)
+
+                    self.Checkpoints[self.Checkpoints.index(loser_old_check)] = loser_new_check
+                    self.Ratings[loser_new_check] = Rating
+                    self.Ratings.pop(loser_old_check)
+            
+
+            self.Current_Match = {}
+            self.Current_Match['team_0'] = winner_new_check
+
+            # Select a new contender randomly from remaining checkpoints    
+            remaining_checkpoints = [ck for ck in self.Checkpoints if ck != winner_new_check]
+            print(f"Remaining Checkpoints for Contenders: {remaining_checkpoints}")
+            for i in range(1, env_config['team_number']):
+                random_index = np.random.randint(len(remaining_checkpoints))
+                contender_check = remaining_checkpoints[random_index]
+
+                self.Current_Match[f'team_{i}'] = contender_check
+                import_path = os.path.join(storage_path, RunName, trial_name, contender_check)
+                Import_Weights(algorithm, import_path, f'team_{i}')
+
+                remaining_checkpoints.pop(random_index)
+
+            print(f"Next Round Pairings: {self.Current_Match}")
+        return self.Checkpoints, self.Current_Match, self.Ratings
                     
 # Log metrics to Weights & Biases (WandB)
 class CustomWandbCallback(DefaultCallbacks):
@@ -271,33 +373,34 @@ class CustomWandbCallback(DefaultCallbacks):
 
         wandb.log(metrics, step=result['training_iteration'])
 
-    def on_train_result_SelfPlay(self, *, algorithm, result, Checkpoint_Window, Current_Pair, **kwargs):
+    def on_train_result_SelfPlay(self, *, algorithm, result, Ratings, Current_Match, **kwargs):
         trial_name = os.path.basename(algorithm._logdir)
         super().on_train_result(algorithm=algorithm, result=result, **kwargs)
 
-        # Init W&B once
+        # Initialize W&B only once
         if not self.initialized:
             wandb.init(
                 project="aerial-battle",
                 group=f"{RunName}",
-                name=f'{RunName}/{trial_name}',
+                name=f"{RunName}/{trial_name}",
                 config=algorithm.config,
                 mode="online",
             )
-            # Define the global step metric for the run
+
+            # Define step metric
             wandb.define_metric("training_iteration")
             wandb.define_metric("*", step_metric="training_iteration")
-            # Prepare the persistent pairings table
-            self.pairing_Table = wandb.Table(columns=["round", "team_0", "team_1"])
+
             self.initialized = True
 
-        # Use a single step for everything in this callback
-        step = int(result.get("training_iteration", algorithm.iteration))
+        # Use RLlib's iteration as global step
+        step = result.get("training_iteration")
         round_no = step // alg_config["checkpoint_freq"]
 
         # -------- Collect scalar metrics --------
         metrics = {}
         env_metrics = result.get("env_runners", {})
+
         metrics["reward_mean"] = env_metrics.get("episode_reward_mean")
         metrics["reward_max"] = env_metrics.get("episode_reward_max")
         metrics["reward_min"] = env_metrics.get("episode_reward_min")
@@ -306,110 +409,90 @@ class CustomWandbCallback(DefaultCallbacks):
         metrics["attack_steps_max"] = env_metrics.get("custom_metrics", {}).get("attack_steps_max", 0)
         metrics["attack_steps_mean"] = env_metrics.get("custom_metrics", {}).get("attack_steps_mean", 0)
 
-        learner_stats = result.get("info", {}).get("learner", {}).get("team_0", {}).get("learner_stats", {})
+        learner_stats = (
+            result.get("info", {})
+                .get("learner", {})
+                .get("team_0", {})
+                .get("learner_stats", {})
+        )
+
         for key in ["alpha_value", "actor_loss", "critic_loss", "target_entropy"]:
             if key in learner_stats:
                 metrics[key] = learner_stats[key]
 
-        # Filter NaNs/None
-        metrics = {k: float(v) for k, v in metrics.items()
-                if v is not None and not (isinstance(v, float) and math.isnan(v))}
-
-        # -------- Bar chart data (optional) --------
-        plots = {}
-        items = list(Checkpoint_Window.items())
-        if items:
-            keys = np.array([k for k, _ in items], dtype=object)
-            mus  = np.array([r.mu for _, r in items], dtype=float)
-            sigs = np.array([r.sigma for _, r in items], dtype=float)
-            cons = mus - 3.0 * sigs
-
-            order = np.argsort(cons)[::-1][:50]
-            bar_table = wandb.Table(columns=["checkpoint", "conservative_score"])
-            for idx in order.tolist():
-                bar_table.add_data(keys[idx], float(cons[idx]))
-
-            plots["Conservative Score per Checkpoint"] = wandb.plot.bar(
-                bar_table, "checkpoint", "conservative_score",
-                title="Conservative Score (μ - 3σ) by Checkpoint"
-            )
-
-        # -------- Single log with a unified step --------
-        payload = {}
-        payload.update(metrics)
-        if plots:
-            payload.update(plots)
-
-        # -------- Pairings table: append once per round --------
-        already_logged_rounds = set(row[0] for row in self.pairing_Table.data)
-        if round_no not in already_logged_rounds:
-            self.pairing_Table.add_data(
-                round_no,
-                Current_Pair.get("team_0"),
-                Current_Pair.get("team_1"),
-            )
-            print(self.pairing_Table.data)
-            payload["Pairings per Round"] = self.pairing_Table
-
-        wandb.log(payload, step=step)
+        # Clean NaNs and None
+        metrics = {
+            k: float(v)
+            for k, v in metrics.items()
+            if v is not None and not (isinstance(v, float) and math.isnan(v))
+        }
 
 # Broker to combine multiple callbacks and restore from a base checkpoint
 class CallbacksBroker(DefaultCallbacks):
     def __init__(self):
         super().__init__()
-        if Adversary_Base_Checkpoint:
+        if len(Checkpoints)>1:
             self.EvaluationCallback = SelfPlayRoundEvaluatorCheckpoint()
         else:
             self.EvaluationCallback = SaveArtifactsOnCheckpoint()
         self.WandbCallBack = CustomWandbCallback()
     
     def on_algorithm_init(self, *, algorithm, metrics_logger=None, **kwargs):
-        if Base_Checkpoint and Adversary_Base_Checkpoint:
-            print("\n++++++++++++++++++++++ Loading Checkpoint +++++++++++++++++++++\n")
-            checkpoint_path = os.path.join(storage_path, RunName, Base_Checkpoint)
-            adversary_checkpoint_path = os.path.join(storage_path, RunName, Adversary_Base_Checkpoint)
-            for id in Base_Policy_restore:
-                if id == 'team_0':
-                    checkpoint = checkpoint_path
-                else:
-                    checkpoint = adversary_checkpoint_path
+        if len(Checkpoints)>1:
+            trial_name = os.path.basename(algorithm._logdir)
 
-                restored = algorithm.get_policy(id).from_checkpoint(checkpoint)['team_0']
+            print("\n++++++++++++++++++++++ Loading Checkpoints for SelfPlay +++++++++++++++++++++\n")
+            for t in range(env_config['team_number']):
+                checkpoint = Checkpoints[t]
 
-                weights = restored.get_weights()
-                algorithm.get_policy(id).set_weights(weights)
-                print(f"Loaded policy {id}")
+                print(f"\n++++++++++++++++++++++ Loading Checkpoint: {checkpoint}+++++++++++++++++++++\n")
+                id = checkpoint.split('/')[1]
+                checkpoint_name = checkpoint.split('/')[0]
+                plane_model = checkpoint.split('/')[2]  # assuming format 'checkpoint_name/team_x/plane_model'
+                LoadCheckpoint(algorithm, checkpoint_name, f'team_{t}', id)
+                print("\n++++++++++++++++++++++ Checkpoint Loaded +++++++++++++++++++++\n")
+                
+                new_init_check = f"{checkpoint_name}_{0}P{plane_model}"
+                export_path = os.path.join(storage_path, RunName, trial_name, new_init_check)
+                Export_Weights(algorithm, export_path, f'team_{t}')
+                Ratings[new_init_check] = ts.Rating()
+                Current_Match[f'team_{t}'] = new_init_check
+                Checkpoints[Checkpoints.index(checkpoint)] = new_init_check
 
-                if id == 'team_0':
-                    Checkpoint_Window[f"{Base_Checkpoint}/{'team_0'}"] = ts.Rating(mu=25.000, sigma=8.333)
-                    Current_Pair[id] = f"{Base_Checkpoint}/{'team_0'}"
-                else:
-                    Checkpoint_Window[f"{Adversary_Base_Checkpoint}/{'team_0'}"] = ts.Rating(mu=25.000, sigma=8.333)
-                    Current_Pair[id] = f"{Adversary_Base_Checkpoint}/{'team_0'}"
+            Match_History.append(Current_Match.copy())
+            print(Match_History)
+            print(f"Initial Self-Play Pairings: {Current_Match}")
 
-            print(f"Current_Pairing: {Current_Pair}")
+        elif len(Checkpoints)==1:
+            checkpoint = Checkpoints[0]
+            print(f"\n++++++++++++++++++++++ Loading Checkpoint: {checkpoint}+++++++++++++++++++++\n")
+            id = checkpoint.split('/')[1]
+            checkpoint_name = checkpoint.split('/')[0]
+            LoadCheckpoint(algorithm, checkpoint_name, 'team_0', id)
             print("\n++++++++++++++++++++++ Checkpoint Loaded +++++++++++++++++++++\n")
 
-        elif Base_Checkpoint:
-            for id in Base_Policy_restore:
-                print("\n++++++++++++++++++++++ Loading Checkpoint +++++++++++++++++++++\n")
-                checkpoint_path = os.path.join(storage_path, RunName, Base_Checkpoint)
-                restored = algorithm.get_policy(id).from_checkpoint(checkpoint_path)['team_0']
-                weights = restored.get_weights()
-                algorithm.get_policy(id).set_weights(weights)
-                print(f"Loaded policy {id}")
-                print("\n++++++++++++++++++++++ Checkpoint Loaded +++++++++++++++++++++\n")
+    def on_episode_created(self, *, episode, base_env, **kwargs):
+        env = base_env.get_sub_environments()[0]
+        if len(Checkpoints)>1:
+            for t in Current_Match.keys():
+                plane_model = int(Current_Match[t].split('P')[1])
+                env.set_plane_model(t, plane_model)
 
     def on_train_result(self, *, algorithm, result, **kwargs):
-        if Adversary_Base_Checkpoint:
-            Checkpoint_Window, Current_Pair = self.EvaluationCallback.on_train_result(algorithm=algorithm, result=result, **kwargs)
-            self.WandbCallBack.on_train_result_SelfPlay(algorithm=algorithm, result=result, Checkpoint_Window=Checkpoint_Window,
-                                            Current_Pair=Current_Pair, **kwargs)
+        global Checkpoints, Current_Match, Ratings, Match_History
+
+        if len(Checkpoints)>1:
+            Checkpoints, Current_Match, Ratings = self.EvaluationCallback.on_train_result(algorithm=algorithm, result=result, **kwargs)
+            self.WandbCallBack.on_train_result_SelfPlay(algorithm=algorithm, result=result, Ratings=Ratings,
+                                            Current_Match=Current_Match, **kwargs)
+            Match_History.append(Current_Match.copy())
+            
+            if algorithm.iteration == alg_config['train_iterations']:
+                plot_and_save_matching_history(Match_History, Ratings, save_dir=os.path.join(storage_path, RunName, "PLOTS"))
         else:
             self.EvaluationCallback.on_train_result(algorithm=algorithm, result=result, **kwargs)
             self.WandbCallBack.on_train_result(algorithm=algorithm, result=result, **kwargs)
 
-    
     def on_episode_step(self, *, episode, **kwargs):
         common_info = episode._last_infos.get("__common__", {})
         attack_metric = common_info.get("attack_steps", None)
@@ -438,7 +521,13 @@ policies = {
         "model": {"fcnet_hiddens": tune.grid_search(alg_config['fcnet_hiddens']), "fcnet_activation": tune.grid_search(alg_config['fcnet_activation'])},
     }),
     "team_1": (None, obs_space, act_space, {
-        "model": {"fcnet_hiddens": [256, 256], "fcnet_activation": 'relu'},
+        "model": {"fcnet_hiddens": tune.grid_search(alg_config['fcnet_hiddens']), "fcnet_activation": tune.grid_search(alg_config['fcnet_activation'])},
+    }),
+    "team_2": (None, obs_space, act_space, {
+        "model": {"fcnet_hiddens": tune.grid_search(alg_config['fcnet_hiddens']), "fcnet_activation": tune.grid_search(alg_config['fcnet_activation'])},
+    }),
+    "team_3": (None, obs_space, act_space, {
+        "model": {"fcnet_hiddens": tune.grid_search(alg_config['fcnet_hiddens']), "fcnet_activation": tune.grid_search(alg_config['fcnet_activation'])},
     }),
 }
 
