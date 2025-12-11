@@ -445,25 +445,31 @@ class CallbacksBroker(DefaultCallbacks):
             trial_name = os.path.basename(algorithm._logdir)
 
             print("\n++++++++++++++++++++++ Loading Checkpoints for SelfPlay +++++++++++++++++++++\n")
-            for t in range(env_config['team_number']):
+            for t in range(len(Checkpoints)):
                 checkpoint = Checkpoints[t]
 
-                print(f"\n++++++++++++++++++++++ Loading Checkpoint: {checkpoint}+++++++++++++++++++++\n")
+                print(f"\n++++++++++++++++++++++ Initializing Checkpoint: {checkpoint}+++++++++++++++++++++")
                 id = checkpoint.split('/')[1]
                 checkpoint_name = checkpoint.split('/')[0]
                 plane_model = checkpoint.split('/')[2]  # assuming format 'checkpoint_name/team_x/plane_model'
-                LoadCheckpoint(algorithm, checkpoint_name, f'team_{t}', id)
-                print("\n++++++++++++++++++++++ Checkpoint Loaded +++++++++++++++++++++\n")
+                LoadCheckpoint(algorithm, checkpoint_name, 'team_0', id)
                 
                 new_init_check = f"{checkpoint_name}_{0}P{plane_model}"
                 export_path = os.path.join(storage_path, RunName, trial_name, new_init_check)
-                Export_Weights(algorithm, export_path, f'team_{t}')
+                Export_Weights(algorithm, export_path, 'team_0')
                 Ratings[new_init_check] = ts.Rating()
-                Current_Match[f'team_{t}'] = new_init_check
                 Checkpoints[Checkpoints.index(checkpoint)] = new_init_check
-
+            
+            print("\n++++++++++++++++++++++ All Checkpoints Initialized +++++++++++++++++++++\n")
+            
+            for t in range(env_config['team_number']):
+                 print(f"\n++++++++++++++++++++++ Loading Checkpoint: {Checkpoints[t]}+++++++++++++++++++++")
+                 Current_Match[f'team_{t}'] = Checkpoints[t]
+                 import_path = os.path.join(storage_path, RunName, trial_name, Checkpoints[t]) 
+                 Import_Weights(algorithm, import_path, f'team_{t}')
+            print("\n++++++++++++++++++++++ Checkpoints Loaded +++++++++++++++++++++\n")
+            
             Match_History.append(Current_Match.copy())
-            print(Match_History)
             print(f"Initial Self-Play Pairings: {Current_Match}")
 
         elif len(Checkpoints)==1:

@@ -603,6 +603,8 @@ class AerialBattle(MultiAgentEnv):
         self.spawning_distance = env_config['spawning_distance']
         self.spawning_orientations = env_config['spawning_orientations']
         self.spawning_speeds = env_config['spawning_speeds']
+        self.spawning_random = env_config['spawning_random']
+        self.initial_multi_offset = env_config['initial_multi_offset']
         self.plane_model = env_config['plane_model']
         self.UAV_config = UAV_config
 
@@ -665,7 +667,7 @@ class AerialBattle(MultiAgentEnv):
         y = y0 + r * np.sin(theta)
         return (x, y)
 
-    def init_airplane(self, aircraft, alive, testing, team):
+    def init_airplane(self, aircraft, alive, testing, team, offset):
         """
         Initialize (or respawn) an aircraft with randomized position, orientation, and speed,
         depending on its team, alive status, and testing mode.
@@ -689,7 +691,7 @@ class AerialBattle(MultiAgentEnv):
 
                 # Random XY position around the base, clipped to stay inside map bounds
                 x, y = self.point_on_circumference(centroid[0], centroid[1],
-                                                    max_spawn_distance, team*delta)
+                                                    max_spawn_distance, offset+(team*delta))
                 x = np.clip(x, 100, self.env_size[0]-100)
                 y = np.clip(y, 100, self.env_size[0]-100)
                 z = -self.env_size[2] / 2  # Midpoint in altitude (Z+ down) # Spawn within combat area
@@ -700,7 +702,7 @@ class AerialBattle(MultiAgentEnv):
 
                 # Random XY position around the base, clipped to stay inside map bounds
                 x, y = self.point_on_circumference(centroid[0], centroid[1],
-                                                    max_spawn_distance, team*delta)
+                                                    max_spawn_distance, offset+(team*delta))
                 x = np.clip(x, 100, self.env_size[0]-100)
                 y = np.clip(y, 100, self.env_size[0]-100)
                 z = -self.env_size[2] / 2  # Midpoint in altitude (Z+ down) # Spawn within combat area
@@ -753,6 +755,10 @@ class AerialBattle(MultiAgentEnv):
         self.episode_steps = 0
         self.attack_metric = 0
         self.kill_metric = 0
+        offset = (self.spawning_random==True) * np.deg2rad(np.random.choice([0, 0, 45, -45, 90, -90, 180, -180]))
+        multi_offset = 0
+        if (self.alive_agents_start>1): 
+            multi_offset = np.deg2rad(self.initial_multi_offset / (self.alive_agents_start-1))
 
         # === Place team bases ===
         # Ensure bases are separated by min_bases_distance
@@ -775,6 +781,9 @@ class AerialBattle(MultiAgentEnv):
         for _ in range(self.alive_agents_start):
             for t in range(self.num_teams):
                 r_agent = np.random.randint(0, self.num_agents_team)
+                while alive_masks[t][r_agent] == 1:
+                      r_agent = np.random.randint(0, self.num_agents_team)
+
                 alive_masks[t][r_agent] = 1  # Random alive agent per team
 
         # === Initialize aircraft states ===
@@ -782,7 +791,8 @@ class AerialBattle(MultiAgentEnv):
             for a in range(self.num_agents_team):
                 index = t * self.num_agents_team + a
                 aircraft = self.Aircrafts[index]
-                self.init_airplane(aircraft, alive_masks[t][a], testing=testing, team=t)
+                final_offset = offset + (multi_offset*a) 
+                self.init_airplane(aircraft, alive_masks[t][a], testing=testing, team=t, offset=final_offset)
 
         # === Optionally convert one aircraft to a dummy agent ===
         if self.dummy != "none":
@@ -792,8 +802,9 @@ class AerialBattle(MultiAgentEnv):
 
             index = t * self.num_agents_team + a
             aircraft = self.Aircrafts[index]
+            final_offset = offset + (multi_offset*a)
 
-            self.init_airplane(aircraft, alive=True, testing=testing, team=t)
+            self.init_airplane(aircraft, alive=True, testing=testing, team=t, offset=final_offset)
 
             dummy_type = self.dummy
             if dummy_type == 'mixed':
@@ -2275,4 +2286,3 @@ def Test_env():
     env.close()
 
 #Test_env()
-

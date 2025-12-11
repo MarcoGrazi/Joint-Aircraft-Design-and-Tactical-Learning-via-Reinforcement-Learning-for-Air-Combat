@@ -2,9 +2,14 @@
   {
     "WANDB_API_KEY": "1b8b77cc6fc3631890702b9ecbfed2fdc1551347",
     'artifacts_folder': 'Training_Runs',
-    'run_name':'FinalTrain_SelfPlay_1',
-    'initial_checkpoints': ['Best_C04/team_0/0', 'Best_C14/team_0/1', 'Best_C04/team_0/2', 'Best_C14/team_0/3', 'Best_C04/team_0/4', 'Best_C14/team_0/5'],  
-    'policies_to_train': ['team_1'],
+    'run_name':'FinalTrain_SelfPlay_2v2',
+    
+    # Here if you specify just one checkpoint or none, you will train a policy from scratch or from that checkpoint. 
+    # (remember to set dummy parameters and policies to train)
+    # If you specify multiple checkpoints, they will be used for self-play training. 
+    # (remember to disable dummy and set policies to train, do not include team_0 as it is the non-learning winner position)
+    'initial_checkpoints': ['Best_C14/team_0/1', 'Best_C04/team_0/4', 'Best_C34/team_0/5'],  
+    'policies_to_train': ['team_0', 'team_1'],
     'fcnet_hiddens': [256],
     'fcnet_activation': ['relu'],
     'actor_learning_rate': [0.00003],
@@ -21,10 +26,10 @@
     'sample_timeout_s': 120,
     'batch_size_per_learner': [1200],
     'gamma': [0.99],
-    'train_iterations': 240000,
-    'checkpoint_freq': 8000,
+    'train_iterations': 100000,
+    'checkpoint_freq': 10000,
     'checkpoint_length': 3000, #3000/10 = 300/60 = 5 minutes
-    'num_evaluation_episodes': 12,
+    'num_evaluation_episodes': 15,
 },
 # This table shows the approximate number of matches needed
 # for TrueSkill to converge (μ and σ stabilize), depending
@@ -53,7 +58,7 @@
       'team_number': 2,
       'agent_number_team': 3,
       'agent_report_name': 'none',
-      'plane_model': [1, 1],  # Select UAV model for each team (1, 2, or 3)
+      'plane_model': [0, 0],  # Select UAV model if the training does not start from an initial checkpoint
       'stepwise_tone_increment':0.01,
       'tone_threshold':0.5,
       'autotrigger': False,
@@ -69,7 +74,7 @@
       'dummy_dir_options': [1, -1],
       'dummy_speed_options': [0, 0, 25, -25, 50, -50],
       'dummy_kill': True,
-      'alive_agents_start': 1,
+      'alive_agents_start': 2,
       'speed_step': 0.01,
       'UpAngle_step': 0.001,
       'SideAngle_step': 0.001,
@@ -77,6 +82,8 @@
       'spawning_distance': 5000,
       'spawning_orientations': [[0, 10, -10], [0, 90, -90, 180]],
       'spawning_speeds': [120, 140, 160, 180, 200, 220, 250],
+      'spawning_random': True,
+      'initial_multi_offset': 60,
       'reward_versions': {
             1: {
                 'GFW': 0.2,   # Flight Reward Weight
@@ -98,7 +105,7 @@
                 'Critical_Delta': 0.1,
                 'optimal_zone': 1000,
                 'att_tone_bonus': 0.5,
-                'def_tone_bonus': 3,
+                'def_tone_bonus': 10,
                 'trigger_penalty': 0.2,
                 'kill_bonus': 250,
                 'terminal_penalty': 1000,
