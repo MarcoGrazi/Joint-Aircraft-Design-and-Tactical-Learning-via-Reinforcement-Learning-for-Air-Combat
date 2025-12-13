@@ -1,51 +1,76 @@
+Aerial Battle – Multi-Agent RL Air Combat Framework
 Overview
 
 This repository implements a research-oriented simulation and training framework for multi-agent aerial combat, designed to develop, train, and evaluate combinations of reinforcement learning (RL) policies and parametric fixed-wing aircraft models.
 
 At its core, the project is a tool for co-design:
 
-Control policies (learned via deep reinforcement learning), and
+Control policies learned via deep reinforcement learning
 
-Aircraft configurations (mass, inertia, aerodynamic coefficients, thrust, control authority, vulnerability cones, etc.)
+Aircraft configurations, including mass, inertia, aerodynamic coefficients, thrust limits, control authority, and vulnerability cones
 
-Rather than treating the aircraft as a fixed platform, the framework allows systematic exploration of how different airframe parameters interact with learned behavior, under the same combat and reward structure.
+Rather than treating the aircraft as a fixed platform, the framework enables systematic exploration of how airframe parameters interact with learned behavior, under a shared combat environment and reward structure.
+
+Key Capabilities
 
 The system supports:
 
 Multi-agent, multi-team aerial engagements
 
-Self-play and league-based training with rating (TrueSkill)
+Self-play and league-based training with TrueSkill rating
 
 Parametric aircraft models selectable per agent and per training round
 
-Full telemetry, trajectory, reward, and video export for analysis
+Full export of telemetry, trajectories, rewards, and rendered videos
 
 This makes the framework suitable not only for training competitive agents, but also for comparative evaluation of aircraft designs under identical learning and engagement conditions.
 
-Modeling assumptions and simplifications
+Modeling Assumptions and Simplifications
 
-To keep the problem tractable and suitable for large-scale RL training, several intentional simplifications are applied:
+To keep the problem tractable and suitable for large-scale reinforcement learning, several intentional simplifications are applied.
 
-Rigid-body fixed-wing dynamics
-Aircraft are modeled as rigid bodies with simplified aerodynamic force and moment models. High-fidelity effects (compressibility, structural flexibility, detailed propulsion dynamics) are not modeled.
+Fixed-Wing Dynamics
 
-Abstracted sensing and targeting
-Missile engagement is based on geometric attack and defense cones, relative orientation, and distance. There is no explicit radar, seeker, or countermeasure modeling.
+Aircraft are modeled as rigid bodies with simplified aerodynamic force and moment models
 
-No explicit missile dynamics
-Missile flight is abstracted into a probabilistic hit model driven by lock quality and relative geometry, rather than simulating missile trajectories.
+High-fidelity effects such as compressibility, structural flexibility, or detailed propulsion dynamics are not modeled
 
-Simplified environment and terrain
-The environment is bounded but flat, with no terrain masking, weather, or obstacles.
+Abstracted Sensing and Targeting
 
-Policy-level control abstraction
-Agents do not command individual control surfaces directly. Instead, they issue high-level normalized commands (directional intent and speed), which are tracked by an internal PID-controlled flight model.
+Missile engagement is based on geometric attack and defense cones, relative orientation, and distance
 
-These simplifications are deliberate: the goal is not high-fidelity flight simulation, but consistent, controllable, and scalable experiments where learning dynamics and design trade-offs can be studied in isolation.
+There is no explicit radar, seeker, electronic warfare, or countermeasure modeling
 
-Research context
+No Explicit Missile Dynamics
 
-This codebase was developed as part of an academic research effort focused on learning-based aerial combat and co-evolution of agents and platforms.
+Missile flight is abstracted into a probabilistic hit model, driven by lock quality and engagement geometry
+
+Individual missile trajectories are not simulated
+
+Simplified Environment
+
+The environment is bounded but flat
+
+No terrain masking, weather, or environmental obstacles are modeled
+
+Policy-Level Control Abstraction
+
+Agents do not command individual control surfaces directly
+
+Instead, they issue high-level normalized commands (directional intent and speed), tracked by an internal PID-controlled flight model
+
+These simplifications are deliberate.
+The goal is not high-fidelity flight simulation, but consistent, controllable, and scalable experiments where learning dynamics and design trade-offs can be studied in isolation.
+
+Research Context
+
+This codebase was developed as part of an academic research effort focused on:
+
+Learning-based aerial combat
+
+Self-play and league-based evaluation
+
+Co-evolution of agents and parametric aircraft platforms
 
 📄 Thesis reference:
 (Link to thesis text will be added here)
@@ -62,140 +87,176 @@ Experimental results and analysis
 
 For theoretical background and methodological motivation, the thesis should be considered the primary reference, with this repository serving as the executable experimental platform.
 
+Future Improvement Paths (Work for Evolution)
 
+This project already integrates custom fixed-wing physics, multi-agent RL, self-play leagues, and extensive artifact logging.
+Future improvements should focus on making evolution safer, faster, and easier to extend, especially at scale.
 
-Future Improvement Paths for this Code:
+1. Reduce Global Mutable State in Training
 
-This project is already doing a lot (custom fixed-wing physics + multi-agent RL + self-play league + artifact logging). The next improvements should focus on making evolution safer and faster (fewer silent breaks, easier debugging, easier to add features).
+League state (checkpoint list, ratings, current match, match history) is currently managed through module-level global variables shared across callbacks.
 
-1) Reduce global mutable state in training
+Recommended Evolution
 
-Right now, league state (checkpoints list, ratings, current match, match history) is managed through module-level globals and shared across callbacks. This works until you introduce multiple trials, restarts, partial failures, or refactors.
+Introduce a LeagueManager object responsible for:
 
-Recommended evolution
-
-Introduce a LeagueManager object that owns:
-
-checkpoint pool
+Checkpoint pool management
 
 TrueSkill ratings
 
-current round pairing
+Current round pairings
 
-match history
+Match history
 
-persistence (league_state.json)
+Persistence (league_state.json)
 
-Callbacks should be thin wrappers calling LeagueManager.update_round(...), LeagueManager.sample_pairings(...), etc.
+Callbacks should act as thin wrappers calling methods such as:
+
+LeagueManager.update_round(...)
+
+LeagueManager.sample_pairings(...)
 
 Why
 
-Easier resuming after crashes
+Easier recovery after crashes
 
 Cleaner separation of concerns
 
-Fewer side effects across Ray workers/trials
+Fewer side effects across Ray workers and trials
 
-2) Stop encoding metadata in checkpoint folder names
+2. Stop Encoding Metadata in Checkpoint Folder Names
 
-A lot of logic depends on parsing strings like somethingPplane_model or checkpoint/team_x/model. Renaming a folder can silently break the league.
+League logic currently depends on parsing strings like:
 
-Recommended evolution
+checkpoint_name_PplaneModel
+checkpoint/team_x/plane_model
 
-Keep folder names human-friendly, but store meaning in a small metadata file next to weights:
+
+Renaming a folder can silently break training logic.
+
+Recommended Evolution
+
+Store semantic information explicitly:
 
 weights.pkl
-
-meta.json (origin checkpoint, policy id, plane model, round number, timestamp)
+meta.json   # origin checkpoint, policy id, plane model, round number, timestamp
 
 Why
 
 Robust to renames and format changes
 
-Makes league logic clearer and less fragile
+Clearer and more maintainable league logic
 
-3) Split environment responsibilities into small modules
+3. Split Environment Responsibilities into Smaller Modules
 
-AerialBattle currently contains: observation building, missile/cone logic, reward shaping, termination rules, and rendering/plotting utilities. This increases cognitive load and makes changes riskier.
+AerialBattle currently handles:
 
-Recommended evolution
+Observation construction
 
-Extract into small helper modules (simple functions are enough):
+Missile and cone logic
 
-combat.py: cones, tone updates, fire/kill probability
+Reward shaping
 
-observations.py: relative features / polar conversions / closure metrics
+Termination rules
 
-rewards.py: reward computation by version (config-driven)
+Rendering and plotting utilities
 
-rendering.py: pygame render + plotting helpers
+Recommended Evolution
 
-termination.py: collision/out-of-bounds/safety termination rules
+Extract functionality into lightweight modules:
+
+combat.py – cones, tone updates, firing logic
+
+observations.py – relative features, polar conversions, closure metrics
+
+rewards.py – reward computation (version-driven)
+
+rendering.py – pygame rendering and plotting utilities
+
+termination.py – collision and safety termination rules
 
 Why
 
-Easier to modify one area without breaking others
+Lower cognitive load
 
-Easier unit testing on isolated logic
+Easier isolated testing
 
-4) Decouple reward computation from termination side-effects
+Reduced risk when modifying individual subsystems
 
-get_individual_reward() currently does both:
+4. Decouple Reward Computation from Termination Side Effects
 
-compute reward components
+get_individual_reward() currently both:
 
-apply termination logic (and kills the aircraft)
+Computes reward components
 
-Recommended evolution
+Applies termination logic and kills aircraft
+
+Recommended Evolution
 
 Make reward functions pure:
 
-return (reward_scalar, reward_components, termination_flags, termination_reason)
+return (
+  reward_scalar,
+  reward_components,
+  termination_flags,
+  termination_reason
+)
 
-Apply kills/termination state updates in one place (the env step), based on returned flags.
 
-Why
-
-Debugging becomes straightforward (“why did this agent die?”)
-
-You can change termination rules without rewriting reward logic
-
-5) Make visualization imports optional and local
-
-Training workers don’t need pygame/plotly/pandas/matplotlib unless you explicitly render or export artifacts. Importing everything at module load makes headless training heavier and more fragile.
-
-Recommended evolution
-
-Move heavy imports inside the functions that need them:
-
-render(), plot_telemetry(), render_trajectory(), etc.
-
-Keep environment core imports minimal.
+Apply state-changing effects (kills, termination) centrally in env.step().
 
 Why
 
-Faster startup time
+Clearer debugging (“why did this agent die?”)
 
-Fewer dependency issues on remote workers
+Easier experimentation with termination rules
 
-Cleaner separation of training vs analysis tooling
+5. Make Visualization Imports Optional and Local
 
-6) Add a lightweight “debug run” path
+Training workers do not need visualization libraries unless artifacts are being generated.
 
-When you scale training, rare failures (NaNs, weird terminations, unstable episodes) become expensive to reproduce.
+Recommended Evolution
 
-Recommended evolution
+Move heavy imports inside the functions that use them:
 
-Add a debug mode that triggers on anomaly:
+render()
 
-saves last N timesteps of telemetry
+plot_telemetry()
 
-saves a short video/trajectory snapshot
+render_trajectory()
 
-writes a compact JSON summary (termination_reason, last action, last obs slice)
+Keep core environment imports minimal.
 
 Why
 
-Faster iteration when something breaks
+Faster startup
 
-Makes training failures actionable instead of mysterious
+Fewer dependency issues on headless or remote workers
+
+Clear separation between training and analysis tooling
+
+6. Add a Lightweight Debug Run Path
+
+At scale, rare failures (NaNs, unstable episodes, unexpected terminations) are costly to reproduce.
+
+Recommended Evolution
+
+Add a debug mode that triggers on anomalies and automatically:
+
+Saves the last N timesteps of telemetry
+
+Exports a short video or trajectory snapshot
+
+Writes a compact JSON summary:
+
+termination reason
+
+last action
+
+key observation slices
+
+Why
+
+Faster diagnosis of failures
+
+Turns silent training issues into actionable debugging data
