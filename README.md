@@ -16,6 +16,7 @@ Rather than treating the aircraft as a fixed platform, the framework enables **s
 ## Run Instructions:
 Basic set up:
 - go into Train_Run_config.py and change Wandb authentication key, artifacts folder and run_name
+- If running an experiment with an initial checkpoint, be sure to create the folder run_name, and put inside the Checkpoint with name matching the one specified in the checkpoint_name part of the initial_checkpoint field
   
 Different types of training can be run on this system:
 - 1 vs dummy: ensure you specify 1 or none starting checkpoints, alive_agents_start = 1 and dummy settings are not 'none'
