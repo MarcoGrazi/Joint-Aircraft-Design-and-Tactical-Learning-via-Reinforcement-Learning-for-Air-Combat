@@ -26,6 +26,10 @@ Different types of training can be run on this system:
 - 2 vs 2: 1 vs 1 with alive agents_start = 2
 - n vs n Tournament: basically 1 vs 1 tournament with alive_agents_start=n. Be careful though, agent_number_team must be >= n. Also consider that if the loaded checkpoints were trained with agent_number_team != current agent_number_team the observation spaces will not match, and thus it will be impossible to run the experiment
 - n vs n vs n: by setting team_number > 2 we can model scenarios with more than 2 competing teams.
+
+After going through Train_Run_config configuration file, execute Training_Script.py and the training run will start.
+
+---
    
 ## Key Capabilities
 
