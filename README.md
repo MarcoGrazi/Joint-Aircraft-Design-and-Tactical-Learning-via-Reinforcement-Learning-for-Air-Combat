@@ -89,7 +89,7 @@ This codebase was developed as part of an **academic research effort** focused o
 ### Thesis Reference
 
 📄 **Thesis reference:**  
-*(Link to thesis text will be added here)*
+[*(Joint-Aircraft-Design-and-Tactical-Learning-via-Reinforcement-Learning-for-Air-Combat)*](https://www.politesi.polimi.it/item/preview.htm?uuid=7f6f7c46-3f44-4337-84c9-c597bae44461)
 
 The thesis provides:
 
